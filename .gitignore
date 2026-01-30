@@ -1,2 +1,5 @@
 docs/
 data/
+backEnd/venv/
+backEnd/__pycache__/
+models/
