@@ -10,27 +10,31 @@
         </div>
         
         <nav class="sidebar-nav">
-          <a href="#" class="nav-item active" @click.prevent="currentPage = 'dashboard'">
+          <a href="#" :class="['nav-item', { active: currentPage === 'dashboard' }]" @click.prevent="currentPage = 'dashboard'">
             <span class="nav-icon">🏠</span>
             <span class="nav-text">仪表盘</span>
           </a>
-          <a href="#" class="nav-item" @click.prevent="currentPage = 'assessment'">
+          <a href="#" :class="['nav-item', { active: currentPage === 'assessment' }]" @click.prevent="currentPage = 'assessment'">
             <span class="nav-icon">📝</span>
             <span class="nav-text">能力评估</span>
           </a>
-          <a href="#" class="nav-item" @click.prevent="currentPage = 'analysis'">
+          <a href="#" :class="['nav-item', { active: currentPage === 'analysis' }]" @click.prevent="currentPage = 'analysis'">
             <span class="nav-icon">📊</span>
             <span class="nav-text">数据分析</span>
           </a>
-          <a href="#" class="nav-item" @click.prevent="currentPage = 'history'">
+          <a href="#" :class="['nav-item', { active: currentPage === 'history' }]" @click.prevent="currentPage = 'history'">
             <span class="nav-icon">📋</span>
             <span class="nav-text">历史记录</span>
           </a>
-          <a href="#" class="nav-item" @click.prevent="currentPage = 'chat'">
+          <a href="#" :class="['nav-item', { active: currentPage === 'evaluations' }]" @click.prevent="currentPage = 'evaluations'">
+            <span class="nav-icon">📊</span>
+            <span class="nav-text">评分记录</span>
+          </a>
+          <a href="#" :class="['nav-item', { active: currentPage === 'chat' }]" @click.prevent="currentPage = 'chat'">
             <span class="nav-icon">💬</span>
             <span class="nav-text">AI对话</span>
           </a>
-          <a href="#" class="nav-item" @click.prevent="currentPage = 'settings'">
+          <a href="#" :class="['nav-item', { active: currentPage === 'settings' }]" @click.prevent="currentPage = 'settings'">
             <span class="nav-icon">⚙️</span>
             <span class="nav-text">设置</span>
           </a>
@@ -71,55 +75,73 @@
               <div class="stat-card">
                 <div class="stat-icon">📊</div>
                 <div class="stat-info">
-                  <div class="stat-value">12</div>
-                  <div class="stat-label">已完成评估</div>
+                  <div class="stat-value">{{ latestEvaluation ? latestEvaluation.overall_score : '-' }}</div>
+                  <div class="stat-label">综合评分</div>
                 </div>
               </div>
               
               <div class="stat-card">
-                <div class="stat-icon">⭐</div>
+                <div class="stat-icon">🧠</div>
                 <div class="stat-info">
-                  <div class="stat-value">85%</div>
-                  <div class="stat-label">平均得分</div>
+                  <div class="stat-value" :class="latestEvaluation ? getScoreClass(latestEvaluation.logic_score) : ''">
+                    {{ latestEvaluation ? latestEvaluation.logic_score : '-' }}
+                  </div>
+                  <div class="stat-label">逻辑思维</div>
                 </div>
               </div>
               
               <div class="stat-card">
-                <div class="stat-icon">📈</div>
+                <div class="stat-icon">💡</div>
                 <div class="stat-info">
-                  <div class="stat-value">+15%</div>
-                  <div class="stat-label">能力提升</div>
+                  <div class="stat-value" :class="latestEvaluation ? getScoreClass(latestEvaluation.creativity_score) : ''">
+                    {{ latestEvaluation ? latestEvaluation.creativity_score : '-' }}
+                  </div>
+                  <div class="stat-label">创造力</div>
                 </div>
               </div>
               
               <div class="stat-card">
-                <div class="stat-icon">🎯</div>
+                <div class="stat-icon">📝</div>
                 <div class="stat-info">
-                  <div class="stat-value">5</div>
-                  <div class="stat-label">待完成任务</div>
+                  <div class="stat-value" :class="latestEvaluation ? getScoreClass(latestEvaluation.expression_score) : ''">
+                    {{ latestEvaluation ? latestEvaluation.expression_score : '-' }}
+                  </div>
+                  <div class="stat-label">表达能力</div>
                 </div>
               </div>
             </div>
             
             <div class="content-grid">
               <div class="content-card">
-                <h3>最近活动</h3>
-                <div class="activity-list">
-                  <div class="activity-item">
-                    <div class="activity-icon">✅</div>
-                    <div class="activity-text">完成了数学能力评估</div>
-                    <div class="activity-time">2小时前</div>
+                <h3>能力评估</h3>
+                <div v-if="latestEvaluation" class="evaluation-details">
+                  <div class="evaluation-item">
+                    <span class="item-label">知识广度</span>
+                    <span class="item-score" :class="getScoreClass(latestEvaluation.knowledge_score)">
+                      {{ latestEvaluation.knowledge_score }}
+                    </span>
                   </div>
-                  <div class="activity-item">
-                    <div class="activity-icon">📝</div>
-                    <div class="activity-text">开始新的语言能力测试</div>
-                    <div class="activity-time">昨天</div>
+                  <div class="evaluation-item">
+                    <span class="item-label">反馈意见</span>
+                    <span class="item-feedback">{{ latestEvaluation.feedback }}</span>
                   </div>
-                  <div class="activity-item">
-                    <div class="activity-icon">🏆</div>
-                    <div class="activity-text">获得了"进步之星"称号</div>
-                    <div class="activity-time">3天前</div>
+                  <div class="evaluation-time">
+                    评分时间：{{ new Date(latestEvaluation.timestamp).toLocaleString('zh-CN') }}
                   </div>
+                  <div class="evaluation-actions">
+                    <button @click="startEvaluation" class="reevaluate-btn" :disabled="isEvaluating">
+                      <span v-if="!isEvaluating">🔄 重新评估</span>
+                      <span v-else>⏳ 评估中...</span>
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="no-evaluation">
+                  <div class="no-evaluation-icon">📊</div>
+                  <p>暂无评分记录</p>
+                  <button @click="startEvaluation" class="evaluate-btn" :disabled="isEvaluating">
+                    <span v-if="!isEvaluating">开始评估</span>
+                    <span v-else>评估中...</span>
+                  </button>
                 </div>
               </div>
               
@@ -134,6 +156,14 @@
           
           <div v-else-if="currentPage === 'chat'" class="chat-content">
             <Chat />
+          </div>
+          
+          <div v-else-if="currentPage === 'history'" class="history-content">
+            <History />
+          </div>
+          
+          <div v-else-if="currentPage === 'evaluations'" class="evaluations-content">
+            <Evaluations />
           </div>
           
           <div v-else class="placeholder-content">
@@ -163,20 +193,26 @@
 import Login from './components/Login.vue';
 import Register from './components/Register.vue';
 import Chat from './components/Chat.vue';
+import History from './components/History.vue';
+import Evaluations from './components/Evaluations.vue';
 
 export default {
   name: 'AppApp',
   components: {
     Login,
     Register,
-    Chat
+    Chat,
+    History,
+    Evaluations
   },
   data() {
     return {
       currentView: 'login',
       currentPage: 'dashboard',
       isLoggedIn: false,
-      username: ''
+      username: '',
+      latestEvaluation: null,
+      isEvaluating: false
     };
   },
   computed: {
@@ -186,6 +222,7 @@ export default {
         assessment: '能力评估',
         analysis: '数据分析',
         history: '历史记录',
+        evaluations: '评分记录',
         chat: 'AI对话',
         settings: '设置'
       };
@@ -198,12 +235,14 @@ export default {
     if (token && username) {
       this.isLoggedIn = true;
       this.username = username;
+      this.loadLatestEvaluation();
     }
   },
   methods: {
     handleLoginSuccess(data) {
       this.isLoggedIn = true;
       this.username = data.username;
+      this.loadLatestEvaluation();
     },
     logout() {
       localStorage.removeItem('token');
@@ -211,6 +250,67 @@ export default {
       this.isLoggedIn = false;
       this.username = '';
       this.currentView = 'login';
+      this.latestEvaluation = null;
+    },
+    async loadLatestEvaluation() {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        const response = await fetch('http://localhost:5000/api/evaluation/latest', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          this.latestEvaluation = data;
+        }
+      } catch (error) {
+        console.error('获取评分失败:', error);
+      }
+    },
+    async startEvaluation() {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      this.isEvaluating = true;
+      try {
+        const response = await fetch('http://localhost:5000/api/evaluate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          this.latestEvaluation = data;
+          alert('评分完成！');
+        } else {
+          const error = await response.json();
+          alert('评分失败：' + (error.error || '未知错误'));
+        }
+      } catch (error) {
+        console.error('评分失败:', error);
+        alert('评分失败，请稍后重试');
+      } finally {
+        this.isEvaluating = false;
+      }
+    },
+    getScoreClass(score) {
+      if (score >= 90) {
+        return 'excellent';
+      } else if (score >= 80) {
+        return 'good';
+      } else if (score >= 60) {
+        return 'average';
+      } else {
+        return 'poor';
+      }
     }
   }
 };
@@ -224,10 +324,10 @@ export default {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica', sans-serif;
   line-height: 1.6;
-  color: #333;
-  background-color: #f5f7fa;
+  color: #1a1a1a;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -239,11 +339,12 @@ body {
 .main-layout {
   display: flex;
   min-height: 100vh;
+  background: #f0f2f5;
 }
 
 .sidebar {
-  width: 250px;
-  background: #2c3e50;
+  width: 280px;
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
   color: white;
   display: flex;
   flex-direction: column;
@@ -251,83 +352,105 @@ body {
   height: 100vh;
   left: 0;
   top: 0;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  z-index: 100;
 }
 
 .sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid #34495e;
+  padding: 28px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 16px;
-  font-weight: 600;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 .logo-icon {
-  font-size: 24px;
+  font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.logo-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .sidebar-nav {
   flex: 1;
-  padding: 20px 0;
+  padding: 24px 16px;
   overflow-y: auto;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
-  color: #bdc3c7;
+  gap: 14px;
+  padding: 14px 18px;
+  color: #94a3b8;
   text-decoration: none;
-  transition: all 0.3s;
-  border-left: 3px solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  font-size: 15px;
 }
 
 .nav-item:hover {
-  background: #34495e;
+  background: rgba(255, 255, 255, 0.1);
   color: white;
+  transform: translateX(4px);
 }
 
 .nav-item.active {
-  background: #34495e;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  border-left-color: #3498db;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .nav-icon {
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .nav-text {
-  font-size: 14px;
+  font: inherit;
 }
 
 .sidebar-footer {
-  padding: 20px;
-  border-top: 1px solid #34495e;
+  padding: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .user-info {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 15px;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
 }
 
 .user-avatar {
-  width: 40px;
-  height: 40px;
-  background: #3498db;
-  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: 700;
+  font-size: 18px;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .user-details {
@@ -335,107 +458,132 @@ body {
 }
 
 .user-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+  color: white;
 }
 
 .user-role {
-  font-size: 12px;
-  color: #bdc3c7;
+  font-size: 13px;
+  color: #94a3b8;
 }
 
 .logout-btn {
   width: 100%;
-  padding: 10px;
-  background: #e74c3c;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 14px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .logout-btn:hover {
-  background: #c0392b;
+  background: rgba(239, 68, 68, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .main-content {
   flex: 1;
-  margin-left: 250px;
+  margin-left: 280px;
   display: flex;
   flex-direction: column;
 }
 
 .top-header {
-  background: white;
-  padding: 15px 30px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 20px 40px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #ecf0f1;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 50;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .header-title h1 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #2c3e50;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: -0.5px;
 }
 
 .header-actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .action-btn {
-  width: 36px;
-  height: 36px;
-  background: #f8f9fa;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px;
+  width: 44px;
+  height: 44px;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  font-size: 18px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .action-btn:hover {
-  background: #e9ecef;
+  background: #f8fafc;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .content-area {
   flex: 1;
-  padding: 30px;
+  padding: 40px;
   overflow-y: auto;
 }
 
 .dashboard-content {
-  max-width: 1200px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
 }
 
 .stat-card {
   background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 28px;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 .stat-icon {
-  font-size: 32px;
+  font-size: 40px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
 }
 
 .stat-info {
@@ -443,117 +591,289 @@ body {
 }
 
 .stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #2c3e50;
-  margin-bottom: 5px;
+  font-size: 32px;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 6px;
+  letter-spacing: -1px;
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #7f8c8d;
+  font-size: 15px;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .content-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 24px;
 }
 
 .content-card {
   background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 28px;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.content-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 .content-card h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #ecf0f1;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+  letter-spacing: -0.5px;
 }
 
 .activity-list {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 16px;
 }
 
 .activity-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px;
-  background: #f8f9fa;
-  border-radius: 4px;
+  gap: 14px;
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.activity-item:hover {
+  background: #f1f5f9;
+  transform: translateX(4px);
 }
 
 .activity-icon {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .activity-text {
   flex: 1;
-  font-size: 14px;
-  color: #2c3e50;
+  font-size: 15px;
+  color: #334155;
+  font-weight: 500;
 }
 
 .activity-time {
-  font-size: 12px;
-  color: #7f8c8d;
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.evaluation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.evaluation-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.item-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.item-score {
+  font-size: 18px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 6px;
+}
+
+.item-score.excellent {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.item-score.good {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.item-score.average {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.item-score.poor {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.item-feedback {
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.6;
+  max-width: 70%;
+}
+
+.evaluation-time {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+  text-align: center;
+}
+
+.no-evaluation {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.no-evaluation-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+}
+
+.no-evaluation p {
+  font-size: 16px;
+  color: #64748b;
+  margin-bottom: 24px;
+  font-weight: 500;
+}
+
+.evaluate-btn {
+  padding: 12px 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  letter-spacing: 0.5px;
+}
+
+.evaluate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.evaluate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.evaluation-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.reevaluate-btn {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  letter-spacing: 0.3px;
+}
+
+.reevaluate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.reevaluate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .chart-placeholder {
-  height: 200px;
-  background: #f8f9fa;
-  border-radius: 4px;
+  height: 240px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 2px dashed rgba(0, 0, 0, 0.1);
 }
 
 .chart-placeholder-text {
-  font-size: 14px;
-  color: #7f8c8d;
+  font-size: 15px;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .chat-content {
-  height: calc(100vh - 60px);
+  height: calc(100vh - 80px);
+  padding: 0;
+}
+
+.history-content {
+  height: calc(100vh - 80px);
+  padding: 0;
+}
+
+.evaluations-content {
+  height: calc(100vh - 80px);
   padding: 0;
 }
 
 .placeholder-content {
   text-align: center;
-  padding: 60px 20px;
+  padding: 80px 20px;
 }
 
 .placeholder-icon {
-  font-size: 64px;
-  margin-bottom: 20px;
+  font-size: 80px;
+  margin-bottom: 24px;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.1));
 }
 
 .placeholder-content h2 {
-  font-size: 24px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 10px;
+  font-size: 32px;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 12px;
+  letter-spacing: -1px;
 }
 
 .placeholder-content p {
-  font-size: 16px;
-  color: #7f8c8d;
+  font-size: 18px;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .auth-container {
   min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .sidebar {
-    width: 60px;
+    width: 80px;
   }
   
   .logo-text,
@@ -564,24 +884,42 @@ body {
   
   .nav-item {
     justify-content: center;
-    padding: 15px 10px;
+    padding: 14px;
   }
   
   .nav-item.active {
-    border-left-color: transparent;
-    border-bottom: 3px solid #3498db;
+    border-radius: 12px;
   }
   
   .main-content {
-    margin-left: 60px;
+    margin-left: 80px;
   }
   
   .content-grid {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 0;
+    transform: translateX(-100%);
+  }
+  
+  .main-content {
+    margin-left: 0;
+  }
   
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .top-header {
+    padding: 16px 24px;
+  }
+  
+  .content-area {
+    padding: 24px;
   }
 }
 
@@ -591,11 +929,15 @@ body {
   }
   
   .top-header {
-    padding: 15px;
+    padding: 16px 20px;
   }
   
   .content-area {
-    padding: 15px;
+    padding: 20px;
+  }
+  
+  .header-title h1 {
+    font-size: 20px;
   }
 }
 </style>
