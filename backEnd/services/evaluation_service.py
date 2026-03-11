@@ -59,7 +59,7 @@ class EvaluationService:
             print(response)
             print("=" * 50)
             
-            # 定义内部解析函数（建议移出函数体以提高性能，但这里保持你的结构）
+            # 定义内部解析函数
             def extract_all_jsons(text):
                 # 预处理：去掉 Markdown 代码块标记
                 text = re.sub(r'```json\s*|\s*```', '', text).strip()
