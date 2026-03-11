@@ -7,6 +7,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 
 app.config['JWT_SECRET_KEY'] = 'jwt-secret-key-change-this-in-production'
+app.config['SECRET_KEY'] = 'file-encryption-secret-key-change-this-in-production'
 app.config['JWT_TOKEN_LOCATION'] = ['headers', 'json']
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -18,6 +19,9 @@ CORS(app,
 
 jwt = JWTManager(app)
 db = SQLAlchemy(app)
+
+# 导出配置
+SECRET_KEY = app.config['SECRET_KEY']
 
 @jwt.expired_token_loader
 def expired_token_callback(jwt_header, jwt_payload):

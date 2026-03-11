@@ -14,14 +14,6 @@
             <span class="nav-icon">🏠</span>
             <span class="nav-text">仪表盘</span>
           </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'assessment' }]" @click.prevent="currentPage = 'assessment'">
-            <span class="nav-icon">📝</span>
-            <span class="nav-text">能力评估</span>
-          </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'analysis' }]" @click.prevent="currentPage = 'analysis'">
-            <span class="nav-icon">📊</span>
-            <span class="nav-text">数据分析</span>
-          </a>
           <a href="#" :class="['nav-item', { active: currentPage === 'history' }]" @click.prevent="currentPage = 'history'">
             <span class="nav-icon">📋</span>
             <span class="nav-text">历史记录</span>
@@ -29,6 +21,10 @@
           <a href="#" :class="['nav-item', { active: currentPage === 'evaluations' }]" @click.prevent="currentPage = 'evaluations'">
             <span class="nav-icon">📊</span>
             <span class="nav-text">评分记录</span>
+          </a>
+          <a href="#" :class="['nav-item', { active: currentPage === 'files' }]" @click.prevent="currentPage = 'files'">
+            <span class="nav-icon">📁</span>
+            <span class="nav-text">文件管理</span>
           </a>
           <a href="#" :class="['nav-item', { active: currentPage === 'chat' }]" @click.prevent="currentPage = 'chat'">
             <span class="nav-icon">💬</span>
@@ -147,8 +143,11 @@
               
               <div class="content-card">
                 <h3>能力雷达图</h3>
-                <div class="chart-placeholder">
-                  <div class="chart-placeholder-text">图表区域</div>
+                <div v-if="latestEvaluation" class="radar-chart-wrapper">
+                  <RadarChart :evaluation="latestEvaluation" />
+                </div>
+                <div v-else class="chart-placeholder">
+                  <div class="chart-placeholder-text">暂无评分数据</div>
                 </div>
               </div>
             </div>
@@ -164,6 +163,81 @@
           
           <div v-else-if="currentPage === 'evaluations'" class="evaluations-content">
             <Evaluations />
+          </div>
+          
+          <div v-else-if="currentPage === 'files'" class="files-content">
+            <FileUpload @useForEvaluation="handleUseFileForEvaluation" />
+            <div v-if="fileIds.length > 0" class="file-ids-list">
+              <h4>当前评估文件列表</h4>
+              <div class="file-ids-content">
+                <span v-for="id in fileIds" :key="id" class="file-id-tag">
+                  文件 ID: {{ id }}
+                  <button @click="fileIds = fileIds.filter(fid => fid !== id)" class="remove-tag-btn">×</button>
+                </span>
+                <button @click="clearFileIds" class="clear-btn">清空</button>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else-if="currentPage === 'settings'" class="settings-content">
+            <div class="settings-container">
+              <div class="settings-card">
+                <h3>账户设置</h3>
+                
+                <div class="setting-item">
+                  <label>用户名</label>
+                  <div class="user-info-display">{{ username }}</div>
+                </div>
+                
+                <div class="setting-section">
+                  <h4>修改密码</h4>
+                  <form @submit.prevent="changePassword" class="password-form">
+                    <div class="form-group">
+                      <label for="currentPassword">当前密码</label>
+                      <input 
+                        type="password" 
+                        id="currentPassword" 
+                        v-model="passwordForm.currentPassword" 
+                        placeholder="请输入当前密码"
+                        required
+                      />
+                    </div>
+                    <div class="form-group">
+                      <label for="newPassword">新密码</label>
+                      <input 
+                        type="password" 
+                        id="newPassword" 
+                        v-model="passwordForm.newPassword" 
+                        placeholder="请输入新密码"
+                        required
+                        minlength="6"
+                      />
+                    </div>
+                    <div class="form-group">
+                      <label for="confirmPassword">确认新密码</label>
+                      <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        v-model="passwordForm.confirmPassword" 
+                        placeholder="请再次输入新密码"
+                        required
+                        minlength="6"
+                      />
+                    </div>
+                    <button type="submit" class="btn-primary" :disabled="isChangingPassword">
+                      <span v-if="!isChangingPassword">修改密码</span>
+                      <span v-else>修改中...</span>
+                    </button>
+                  </form>
+                </div>
+                
+                <div class="setting-section danger-section">
+                  <h4>退出登录</h4>
+                  <p class="danger-text">退出登录后，您需要重新登录才能访问系统功能。</p>
+                  <button @click="logout" class="btn-danger">退出登录</button>
+                </div>
+              </div>
+            </div>
           </div>
           
           <div v-else class="placeholder-content">
@@ -195,6 +269,8 @@ import Register from './components/Register.vue';
 import Chat from './components/Chat.vue';
 import History from './components/History.vue';
 import Evaluations from './components/Evaluations.vue';
+import FileUpload from './components/FileUpload.vue';
+import RadarChart from './components/RadarChart.vue';
 
 export default {
   name: 'AppApp',
@@ -203,26 +279,34 @@ export default {
     Register,
     Chat,
     History,
-    Evaluations
+    Evaluations,
+    FileUpload,
+    RadarChart
   },
   data() {
     return {
       currentView: 'login',
       currentPage: 'dashboard',
-      isLoggedIn: false,
-      username: '',
-      latestEvaluation: null,
-      isEvaluating: false
+          isLoggedIn: false,
+          username: '',
+          latestEvaluation: null,
+          isEvaluating: false,
+          fileIds: [],
+          passwordForm: {
+            currentPassword: '',
+            newPassword: '',
+            confirmPassword: ''
+          },
+          isChangingPassword: false
     };
   },
   computed: {
     pageTitle() {
       const titles = {
         dashboard: '仪表盘',
-        assessment: '能力评估',
-        analysis: '数据分析',
         history: '历史记录',
         evaluations: '评分记录',
+        files: '文件管理',
         chat: 'AI对话',
         settings: '设置'
       };
@@ -283,7 +367,8 @@ export default {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
-          }
+          },
+          body: JSON.stringify({ file_ids: this.fileIds })
         });
 
         if (response.ok) {
@@ -299,6 +384,59 @@ export default {
         alert('评分失败，请稍后重试');
       } finally {
         this.isEvaluating = false;
+      }
+    },
+    handleUseFileForEvaluation(fileId) {
+      if (!this.fileIds.includes(fileId)) {
+        this.fileIds.push(fileId);
+        alert('文件已添加到评估列表，正在进行评估...');
+        this.startEvaluation();
+      } else {
+        alert('文件已在评估列表中，正在进行评估...');
+        this.startEvaluation();
+      }
+    },
+    clearFileIds() {
+      this.fileIds = [];
+      alert('已清空评估文件列表');
+    },
+    async changePassword() {
+      if (this.passwordForm.newPassword !== this.passwordForm.confirmPassword) {
+        alert('两次输入的新密码不一致');
+        return;
+      }
+
+      this.isChangingPassword = true;
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('http://localhost:5000/api/change-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            current_password: this.passwordForm.currentPassword,
+            new_password: this.passwordForm.newPassword
+          })
+        });
+
+        if (response.ok) {
+          alert('密码修改成功！');
+          this.passwordForm = {
+            currentPassword: '',
+            newPassword: '',
+            confirmPassword: ''
+          };
+        } else {
+          const error = await response.json();
+          alert('密码修改失败：' + (error.error || '未知错误'));
+        }
+      } catch (error) {
+        console.error('密码修改失败:', error);
+        alert('密码修改失败，请稍后重试');
+      } finally {
+        this.isChangingPassword = false;
       }
     },
     getScoreClass(score) {
@@ -810,6 +948,233 @@ body {
   cursor: not-allowed;
 }
 
+.file-ids-list {
+  margin-top: 24px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.file-ids-list h4 {
+  margin-bottom: 16px;
+  color: #1e293b;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.file-ids-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.file-id-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #e0f2fe;
+  color: #0284c7;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid #bae6fd;
+}
+
+.remove-tag-btn {
+  background: none;
+  border: none;
+  color: #0284c7;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.remove-tag-btn:hover {
+  background: rgba(2, 132, 199, 0.1);
+}
+
+.clear-btn {
+  padding: 8px 16px;
+  background: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #fee2e2;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: auto;
+}
+
+.clear-btn:hover {
+  background: #fee2e2;
+}
+
+.settings-content {
+  padding: 24px;
+  background: #f8fafc;
+  min-height: 600px;
+}
+
+.settings-container {
+  max-width: 600px;
+}
+
+.settings-card {
+  background: white;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.settings-card h3 {
+  margin-bottom: 24px;
+  color: #1e293b;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.setting-item {
+  margin-bottom: 24px;
+}
+
+.setting-item label {
+  display: block;
+  margin-bottom: 8px;
+  color: #475569;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.user-info-display {
+  padding: 12px 16px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  color: #1e293b;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.setting-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.setting-section h4 {
+  margin-bottom: 16px;
+  color: #1e293b;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.danger-section {
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 2px solid #fee2e2;
+}
+
+.danger-section h4 {
+  color: #ef4444;
+}
+
+.danger-text {
+  color: #64748b;
+  font-size: 14px;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  color: #475569;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.form-group input {
+  padding: 12px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.form-group input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.btn-primary {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 8px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.files-content {
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 12px;
+  min-height: 600px;
+}
+
 .chart-placeholder {
   height: 240px;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
@@ -817,13 +1182,24 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed rgba(0, 0, 0, 0.1);
+  border: 2px dashed #e2e8f0;
 }
 
 .chart-placeholder-text {
-  font-size: 15px;
   color: #64748b;
+  font-size: 16px;
   font-weight: 500;
+}
+
+.radar-chart-wrapper {
+  width: 50%;
+  margin: 0 auto;
+  height: 400px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: white;
+  padding: 20px;
 }
 
 .chat-content {

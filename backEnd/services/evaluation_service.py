@@ -6,22 +6,39 @@ from config.constants import EVALUATION_PROMPT_TEMPLATE
 from db_models.evaluation import Evaluation
 from db_models.chat_history import ChatHistory
 from services.chat_service import ChatService
+from services.file_service import FileService
 
 class EvaluationService:
     @staticmethod
-    def evaluate_user_overall(user_id, model_service):
+    def evaluate_user_overall(user_id, model_service, file_ids=None):
         user_chats = ChatService.get_user_history(user_id)
-        if not user_chats:
-            return None, "暂无对话记录"
         
-        # 1. 准备对话内容
-        chat_content = '\n'.join([f"{c['role']}: {c['content']}" for c in user_chats[-20:]])
+        # 融合文档内容
+        combined_content = []
+        
+        # 添加文档内容
+        if file_ids:
+            for file_id in file_ids:
+                file = FileService.get_file_by_id(file_id, user_id)
+                if file:
+                    file_content = FileService.parse_file(file.filepath, user_id)
+                    combined_content.append(f"文档内容 ({file.filename}):\n{file_content[:1000]}")
+        
+        # 添加对话历史
+        if user_chats:
+            chat_content = '\n'.join([f"{c['role']}: {c['content']}" for c in user_chats[-20:]])
+            combined_content.append(f"对话历史:\n{chat_content}")
+        
+        if not combined_content:
+            return None, "暂无对话记录和文档内容"
+        
+        final_content = '\n\n'.join(combined_content)
         
         # 2. 构造符合 Chat 规范的 Messages 列表
         # 建议将 EVALUATION_PROMPT_TEMPLATE 作为 system 角色或 user 角色传入
         messages = [
             {"role": "system", "content": "你是一个专业的文本分析助手，请严格按照 JSON 格式输出评估结果。"},
-            {"role": "user", "content": EVALUATION_PROMPT_TEMPLATE.format(chat_content=chat_content)}
+            {"role": "user", "content": EVALUATION_PROMPT_TEMPLATE.format(chat_content=final_content)}
         ]
         
         try:

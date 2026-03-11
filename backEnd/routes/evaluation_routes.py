@@ -9,7 +9,11 @@ model_service = ModelService()
 def evaluate_user_overall():
     uid = get_jwt_identity()
     
-    evaluation, error = EvaluationService.evaluate_user_overall(int(uid), model_service)
+    # 从请求中获取文件ID列表
+    data = request.get_json() or {}
+    file_ids = data.get('file_ids', None)
+    
+    evaluation, error = EvaluationService.evaluate_user_overall(int(uid), model_service, file_ids)
     
     if error:
         print(f"评分错误: {error}")

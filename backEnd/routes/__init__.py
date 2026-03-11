@@ -1,15 +1,20 @@
-from .auth_routes import register, login
+from .auth_routes import register, login, change_password
 from .chat_routes import chat, clear_chat, get_chat_history
 from .evaluation_routes import evaluate_user_overall, get_latest_evaluation, get_evaluations
+from .file_routes import upload_file, get_user_files, get_file_content
 
 def register_routes(app):
     app.add_url_rule('/api/register', 'register', register, methods=['POST'])
     app.add_url_rule('/api/login', 'login', login, methods=['POST'])
+    app.add_url_rule('/api/change-password', 'change_password', change_password, methods=['POST'])
     app.add_url_rule('/api/chat', 'chat', chat, methods=['POST'])
     app.add_url_rule('/api/chat/clear', 'clear_chat', clear_chat, methods=['POST'])
     app.add_url_rule('/api/chat/history', 'get_chat_history', get_chat_history, methods=['GET'])
     app.add_url_rule('/api/evaluate', 'evaluate_user_overall', evaluate_user_overall, methods=['POST'])
     app.add_url_rule('/api/evaluation/latest', 'get_latest_evaluation', get_latest_evaluation, methods=['GET'])
     app.add_url_rule('/api/evaluations', 'get_evaluations', get_evaluations, methods=['GET'])
+    app.add_url_rule('/api/files/upload', 'upload_file', upload_file, methods=['POST'])
+    app.add_url_rule('/api/files', 'get_user_files', get_user_files, methods=['GET'])
+    app.add_url_rule('/api/files/<int:file_id>', 'get_file_content', get_file_content, methods=['GET'])
 
 __all__ = ['register_routes']
