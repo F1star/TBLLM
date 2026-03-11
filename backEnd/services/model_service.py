@@ -86,44 +86,54 @@ class ModelService:
 
         with self.generate_lock:
             try:
-                history = self.chat_history.get(user_id, "")
-                full_prompt = (history + prompt)[-MAX_CONTEXT_CHARS:]
+                # 1. 维护结构化的对话历史 (List of Dict)
+                if user_id not in self.chat_history or not isinstance(self.chat_history[user_id], list):
+                    self.chat_history[user_id] = []
+                
+                messages = self.chat_history[user_id]
+                messages.append({"role": "user", "content": prompt})
 
-                inputs = self.tokenizer(
-                    full_prompt,
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=512
-                ).to(self.model.device)
+                # 2. 使用官方模板构建输入字符串 (Qwen 必须包含 <|im_start|> 等标记)
+                # tokenize=False 返回处理好的字符串，add_generation_prompt 引导模型开始回答
+                input_text = self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
 
+                # 3. 编码并移动到设备
+                inputs = self.tokenizer([input_text], return_tensors="pt").to(self.model.device)
+
+                # 4. 执行生成
                 with torch.inference_mode():
                     outputs = self.model.generate(
                         **inputs,
                         max_new_tokens=MAX_NEW_TOKENS,
+                        repetition_penalty=1.1,
                         temperature=0.6,
                         top_p=0.85,
                         do_sample=True,
-                        pad_token_id=self.tokenizer.eos_token_id,
-                        eos_token_id=self.tokenizer.eos_token_id
+                        pad_token_id=self.tokenizer.eos_token_id
                     )
 
-                decoded = self.tokenizer.decode(
-                    outputs[0],
-                    skip_special_tokens=True
-                )
+                # 5. 精准提取回复部分（跳过输入 tokens 的长度）
+                input_ids_len = inputs.input_ids.shape[1]
+                response_ids = outputs[0][input_ids_len:]
+                response = self.tokenizer.decode(response_ids, skip_special_tokens=True).strip()
 
-                response = decoded[len(full_prompt):].strip()
-
-                self.chat_history[user_id] = (
-                    full_prompt + response
-                )[-MAX_CONTEXT_CHARS:]
-
+                # 6. 更新历史（限制对话轮数，防止 Token 爆炸）
+                if response:
+                    messages.append({"role": "assistant", "content": response})
+                    # 仅保留最近 5 轮完整对话（10 条记录）
+                    if len(messages) > 10:
+                        self.chat_history[user_id] = messages[-10:]
+                
                 return response or "（模型未生成有效内容）"
 
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():
                     torch.cuda.empty_cache()
-                    return "显存不足，请稍后重试或清空对话。"
+                    return "显存不足，请重试或清空历史。"
                 return f"推理错误: {str(e)}"
     
     def is_busy(self):

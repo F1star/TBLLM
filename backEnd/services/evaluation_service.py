@@ -14,119 +14,80 @@ class EvaluationService:
         if not user_chats:
             return None, "暂无对话记录"
         
+        # 1. 准备对话内容
         chat_content = '\n'.join([f"{c['role']}: {c['content']}" for c in user_chats[-20:]])
         
-        prompt = EVALUATION_PROMPT_TEMPLATE.format(chat_content=chat_content)
-        
-        print("=" * 50)
-        print("评估Prompt:")
-        print(prompt)
-        print("=" * 50)
+        # 2. 构造符合 Chat 规范的 Messages 列表
+        # 建议将 EVALUATION_PROMPT_TEMPLATE 作为 system 角色或 user 角色传入
+        messages = [
+            {"role": "system", "content": "你是一个专业的文本分析助手，请严格按照 JSON 格式输出评估结果。"},
+            {"role": "user", "content": EVALUATION_PROMPT_TEMPLATE.format(chat_content=chat_content)}
+        ]
         
         try:
+            # 3. 使用 apply_chat_template 生成输入文本
+            input_text = model_service.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+
             inputs = model_service.tokenizer(
-                prompt, 
-                return_tensors="pt", 
-                truncation=True, 
-                max_length=512
+                [input_text], 
+                return_tensors="pt"
             ).to(model_service.model.device)
             
+            # 4. 推理生成
             with torch.inference_mode():
                 outputs = model_service.model.generate(
                     **inputs,
-                    max_new_tokens=256,
-                    temperature=0.7,
+                    max_new_tokens=512, # 评估通常包含 feedback，建议稍微大一点
+                    temperature=0.3,    # 降低随机性，保证 JSON 格式更稳定
                     top_p=0.9,
                     do_sample=True,
-                    pad_token_id=model_service.tokenizer.eos_token_id,
-                    eos_token_id=model_service.tokenizer.eos_token_id
+                    repetition_penalty=1.1,
+                    pad_token_id=model_service.tokenizer.eos_token_id
                 )
             
-            response = model_service.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # 5. 【核心修改】精准截断，只保留模型生成的部分
+            input_length = inputs.input_ids.shape[1]
+            response_ids = outputs[0][input_length:]
+            response = model_service.tokenizer.decode(response_ids, skip_special_tokens=True).strip()
+            
             print("=" * 50)
-            print("大模型原始输出:")
+            print("大模型生成的内容:")
             print(response)
             print("=" * 50)
             
+            # 定义内部解析函数（建议移出函数体以提高性能，但这里保持你的结构）
             def extract_all_jsons(text):
-                text = text.strip()
-                
-                if text.startswith('```json'):
-                    text = text[7:]
-                elif text.startswith('```'):
-                    text = text[3:]
-                
-                if text.endswith('```'):
-                    text = text[:-3]
-                
-                text = text.strip()
-                
+                # 预处理：去掉 Markdown 代码块标记
+                text = re.sub(r'```json\s*|\s*```', '', text).strip()
+                # 寻找 JSON 对象
                 jsons = []
-                i = 0
-                
-                while i < len(text):
-                    start = text.find('{', i)
-                    if start == -1:
-                        break
-                    
-                    brace_count = 0
-                    in_string = False
-                    escape = False
-                    
-                    for j in range(start, len(text)):
-                        char = text[j]
-                        
-                        if escape:
-                            escape = False
-                            continue
-                        
-                        if char == '\\':
-                            escape = True
-                            continue
-                        
-                        if char == '"':
-                            in_string = not in_string
-                            continue
-                        
-                        if not in_string:
-                            if char == '{':
-                                brace_count += 1
-                            elif char == '}':
-                                brace_count -= 1
-                                if brace_count == 0:
-                                    jsons.append(text[start:j+1])
-                                    i = j + 1
-                                    break
-                    
-                    if brace_count != 0:
-                        i = start + 1
-                
+                brace_count = 0
+                start = -1
+                for i, char in enumerate(text):
+                    if char == '{':
+                        if brace_count == 0: start = i
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and start != -1:
+                            jsons.append(text[start:i+1])
                 return jsons
-            
+
             def is_evaluation_json(json_str):
-                pattern = r'"(logic_score|creativity_score|expression_score|knowledge_score|overall_score)"\s*:\s*\d+'
-                matches = re.findall(pattern, json_str)
-                return len(matches) >= 3
+                # 简单校验字段
+                required = ["logic_score", "overall_score"]
+                return all(field in json_str for field in required)
             
             all_jsons = extract_all_jsons(response)
             
-            print("=" * 50)
-            print(f"找到 {len(all_jsons)} 个JSON对象")
-            print("=" * 50)
-            
-            json_str = None
-            for j in all_jsons:
-                if is_evaluation_json(j):
-                    json_str = j
-                    break
+            json_str = next((j for j in all_jsons if is_evaluation_json(j)), None)
             
             if json_str:
-                print("=" * 50)
-                print("提取的JSON:")
-                print(json_str)
-                print("=" * 50)
                 evaluation_data = json.loads(json_str)
-                
                 evaluation = Evaluation(
                     user_id=user_id,
                     chat_history_id=0,
@@ -139,12 +100,13 @@ class EvaluationService:
                 )
                 db.session.add(evaluation)
                 db.session.commit()
-                
                 return evaluation, None
             else:
-                return None, "无法解析评分结果"
+                return None, f"解析失败，模型输出内容为: {response[:100]}..."
                 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return None, f"评分失败: {str(e)}"
     
     @staticmethod
