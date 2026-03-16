@@ -125,3 +125,18 @@ class FileService:
     @staticmethod
     def get_file_by_id(file_id, user_id):
         return File.query.filter_by(id=file_id, user_id=user_id).first()
+    
+    @staticmethod
+    def delete_file(file_id, user_id):
+        file = FileService.get_file_by_id(file_id, user_id)
+        if not file:
+            return False
+        
+        # 删除文件
+        if os.path.exists(file.filepath):
+            os.remove(file.filepath)
+        
+        # 删除数据库记录
+        db.session.delete(file)
+        db.session.commit()
+        return True

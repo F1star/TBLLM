@@ -1,7 +1,7 @@
 from .auth_routes import register, login, change_password
 from .chat_routes import chat, clear_chat, get_chat_history
 from .evaluation_routes import evaluate_user_overall, get_latest_evaluation, get_evaluations
-from .file_routes import upload_file, get_user_files, get_file_content
+from .file_routes import upload_file, get_user_files, get_file_content, download_file, delete_file
 
 def register_routes(app):
     app.add_url_rule('/api/register', 'register', register, methods=['POST'])
@@ -16,5 +16,7 @@ def register_routes(app):
     app.add_url_rule('/api/files/upload', 'upload_file', upload_file, methods=['POST'])
     app.add_url_rule('/api/files', 'get_user_files', get_user_files, methods=['GET'])
     app.add_url_rule('/api/files/<int:file_id>', 'get_file_content', get_file_content, methods=['GET'])
+    app.add_url_rule('/api/files/<int:file_id>/download', 'download_file', download_file, methods=['GET'])
+    app.add_url_rule('/api/files/<int:file_id>', 'delete_file', delete_file, methods=['DELETE'])
 
 __all__ = ['register_routes']

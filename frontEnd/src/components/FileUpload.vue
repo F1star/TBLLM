@@ -52,8 +52,14 @@
             <button @click="viewFileContent(file.id)" class="action-btn view-btn">
               查看
             </button>
+            <button @click="downloadFile(file.id, file.filename)" class="action-btn download-btn">
+              下载
+            </button>
+            <button @click="deleteFile(file.id)" class="action-btn delete-btn">
+              删除
+            </button>
             <button @click="useFileForEvaluation(file.id)" class="action-btn eval-btn">
-              用于评估
+              评估
             </button>
           </div>
         </div>
@@ -164,6 +170,61 @@ export default {
     useFileForEvaluation(fileId) {
       // 触发父组件的评估事件，传递文件ID
       this.$emit('useForEvaluation', fileId);
+    },
+    async downloadFile(fileId, filename) {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/files/${fileId}/download`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        } else {
+          const error = await response.json();
+          alert('下载失败: ' + (error.error || '未知错误'));
+        }
+      } catch (error) {
+        console.error('下载失败:', error);
+        alert('下载失败，请稍后重试');
+      }
+    },
+    async deleteFile(fileId) {
+      if (!confirm('确定要删除这个文件吗？')) {
+        return;
+      }
+      
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/files/${fileId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          alert('文件删除成功');
+          this.loadUserFiles();
+        } else {
+          const error = await response.json();
+          alert('删除失败: ' + (error.error || '未知错误'));
+        }
+      } catch (error) {
+        console.error('删除失败:', error);
+        alert('删除失败，请稍后重试');
+      }
     },
     getFileIcon(filename) {
       const ext = filename.split('.').pop().toLowerCase();
@@ -416,6 +477,24 @@ h3 {
 
 .eval-btn:hover {
   background: #bbf7d0;
+}
+
+.download-btn {
+  background: #dbeafe;
+  color: #3b82f6;
+}
+
+.download-btn:hover {
+  background: #bfdbfe;
+}
+
+.delete-btn {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.delete-btn:hover {
+  background: #fecaca;
 }
 
 .file-content-modal {
