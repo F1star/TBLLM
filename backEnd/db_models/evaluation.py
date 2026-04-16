@@ -3,7 +3,8 @@ from config.settings import db
 class Evaluation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    chat_history_id = db.Column(db.Integer, db.ForeignKey('chat_history.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=True)
+    chat_history_id = db.Column(db.Integer, db.ForeignKey('chat_history.id'), nullable=True)
     logic_score = db.Column(db.Float, default=0.0)
     creativity_score = db.Column(db.Float, default=0.0)
     expression_score = db.Column(db.Float, default=0.0)

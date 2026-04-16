@@ -7,8 +7,8 @@ MODEL_PATH = os.path.join(
     'models', 'Qwen1.5-1.8B-Chat'
 )
 
-MAX_CONTEXT_CHARS = 800
-MAX_NEW_TOKENS = 128
+MAX_CONTEXT_CHARS = 8000
+MAX_NEW_TOKENS = 1280
 
 EVALUATION_PROMPT_TEMPLATE = """
 你是一位专业的教育评估专家，要对青少年的对话进行评估，请根据以下对话内容，从四个维度对用户（user）一方的对话进行评分（0-100分）：
@@ -37,3 +37,24 @@ EVALUATION_PROMPT_TEMPLATE = """
 - overall_score为四个维度的平均分
 - feedback应该包含具体的改进建议
 """
+
+# LangChain 框架配置
+# =============================================================================
+
+# AdvancedAgent 配置
+USE_ADVANCED_AGENT = False  # 是否使用AdvancedAgent（True：使用，False：使用原版AgentService）
+
+# 向量存储配置
+VECTOR_STORE_PATH = os.path.join(BASE_DIR, "vector_store")
+EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+CHROMA_COLLECTION_NAME = "user_documents"
+
+# RAG 配置
+USE_VECTOR_RETRIEVAL = True  # 是否使用向量检索（True：使用，False：使用关键词检索）
+RAG_TOP_K = 3  # 检索返回的文档数量
+RAG_CHUNK_SIZE = 500  # 文本分块大小
+RAG_CHUNK_OVERLAP = 50  # 文本分块重叠大小
+
+# Agent 配置
+AGENT_MAX_ITERATIONS = 5  # Agent最大迭代次数（工具调用次数）
+AGENT_VERBOSE = False  # 是否输出详细日志

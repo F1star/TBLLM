@@ -2,12 +2,25 @@ from config.settings import db
 from db_models.evaluation import Evaluation
 from services.chat_service import ChatService
 from services.file_service import FileService
+from services.session_service import SessionService
 
 
 class EvaluationService:
     @staticmethod
-    def evaluate_user_overall(user_id, model_service, file_ids=None):
-        user_chats = ChatService.get_user_history(user_id)
+    def evaluate_user_overall(user_id, model_service, file_ids=None, session_id=None):
+        """评估用户整体或特定会话
+        Args:
+            user_id: 用户ID
+            model_service: 模型服务
+            file_ids: 文件ID列表
+            session_id: 可选，会话ID。如果为None，则评估未关联到会话的历史记录
+        """
+        if session_id:
+            # 评估特定会话
+            user_chats = ChatService.get_user_history(user_id, session_id=session_id)
+        else:
+            # 评估未关联到会话的历史记录（旧历史）
+            user_chats = ChatService.get_unassigned_chats(user_id)
 
         try:
             chat_history_text = EvaluationService._build_chat_history_text(user_chats)
@@ -23,7 +36,8 @@ class EvaluationService:
 
             evaluation = Evaluation(
                 user_id=user_id,
-                chat_history_id=0,
+                session_id=session_id,
+                chat_history_id=None,  # 不再关联单条消息
                 logic_score=evaluation_data.get("logic_score", 0),
                 creativity_score=evaluation_data.get("creativity_score", 0),
                 expression_score=evaluation_data.get("expression_score", 0),
@@ -41,11 +55,17 @@ class EvaluationService:
             return None, f"评分失败: {str(e)}"
 
     @staticmethod
-    def get_latest_evaluation(user_id):
-        evaluation = Evaluation.query.filter_by(user_id=user_id).order_by(Evaluation.timestamp.desc()).first()
+    def get_latest_evaluation(user_id, session_id=None):
+        """获取最新评估记录，可指定会话"""
+        query = Evaluation.query.filter_by(user_id=user_id)
+        if session_id is not None:
+            query = query.filter_by(session_id=session_id)
+        evaluation = query.order_by(Evaluation.timestamp.desc()).first()
         if evaluation:
             return {
                 "id": evaluation.id,
+                "session_id": evaluation.session_id,
+                "chat_history_id": evaluation.chat_history_id,
                 "logic_score": evaluation.logic_score,
                 "creativity_score": evaluation.creativity_score,
                 "expression_score": evaluation.expression_score,
@@ -57,11 +77,16 @@ class EvaluationService:
         return None
 
     @staticmethod
-    def get_user_evaluations(user_id):
-        evaluations = Evaluation.query.filter_by(user_id=user_id).order_by(Evaluation.timestamp.desc()).all()
+    def get_user_evaluations(user_id, session_id=None):
+        """获取用户评估记录，可指定会话"""
+        query = Evaluation.query.filter_by(user_id=user_id)
+        if session_id is not None:
+            query = query.filter_by(session_id=session_id)
+        evaluations = query.order_by(Evaluation.timestamp.desc()).all()
         return [
             {
                 "id": e.id,
+                "session_id": e.session_id,
                 "chat_history_id": e.chat_history_id,
                 "logic_score": e.logic_score,
                 "creativity_score": e.creativity_score,

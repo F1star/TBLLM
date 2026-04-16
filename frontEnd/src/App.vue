@@ -14,9 +14,9 @@
             <span class="nav-icon">🏠</span>
             <span class="nav-text">仪表盘</span>
           </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'history' }]" @click.prevent="currentPage = 'history'">
-            <span class="nav-icon">📋</span>
-            <span class="nav-text">历史记录</span>
+          <a href="#" :class="['nav-item', { active: currentPage === 'sessions' }]" @click.prevent="currentPage = 'sessions'">
+            <span class="nav-icon">💬</span>
+            <span class="nav-text">会话管理</span>
           </a>
           <a href="#" :class="['nav-item', { active: currentPage === 'evaluations' }]" @click.prevent="currentPage = 'evaluations'">
             <span class="nav-icon">📊</span>
@@ -156,7 +156,11 @@
           <div v-else-if="currentPage === 'chat'" class="chat-content">
             <Chat />
           </div>
-          
+
+          <div v-else-if="currentPage === 'sessions'" class="sessions-content">
+            <Sessions />
+          </div>
+
           <div v-else-if="currentPage === 'history'" class="history-content">
             <History />
           </div>
@@ -268,6 +272,7 @@ import Login from './components/Login.vue';
 import Register from './components/Register.vue';
 import Chat from './components/Chat.vue';
 import History from './components/History.vue';
+import Sessions from './components/Sessions.vue';
 import Evaluations from './components/Evaluations.vue';
 import FileUpload from './components/FileUpload.vue';
 import RadarChart from './components/RadarChart.vue';
@@ -279,6 +284,7 @@ export default {
     Register,
     Chat,
     History,
+    Sessions,
     Evaluations,
     FileUpload,
     RadarChart
@@ -304,6 +310,7 @@ export default {
     pageTitle() {
       const titles = {
         dashboard: '仪表盘',
+        sessions: '会话管理',
         history: '历史记录',
         evaluations: '评分记录',
         files: '文件管理',

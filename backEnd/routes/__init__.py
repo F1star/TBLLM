@@ -2,6 +2,8 @@ from .auth_routes import register, login, change_password
 from .chat_routes import chat, clear_chat, get_chat_history
 from .evaluation_routes import evaluate_user_overall, get_latest_evaluation, get_evaluations
 from .file_routes import upload_file, get_user_files, get_file_content, download_file, delete_file
+from .session_routes import (get_sessions, create_session, update_session,
+                           delete_session, get_session_messages, get_session_stats)
 
 def register_routes(app):
     app.add_url_rule('/api/register', 'register', register, methods=['POST'])
@@ -18,5 +20,13 @@ def register_routes(app):
     app.add_url_rule('/api/files/<int:file_id>', 'get_file_content', get_file_content, methods=['GET'])
     app.add_url_rule('/api/files/<int:file_id>/download', 'download_file', download_file, methods=['GET'])
     app.add_url_rule('/api/files/<int:file_id>', 'delete_file', delete_file, methods=['DELETE'])
+
+    # 会话管理API
+    app.add_url_rule('/api/sessions', 'get_sessions', get_sessions, methods=['GET'])
+    app.add_url_rule('/api/sessions', 'create_session', create_session, methods=['POST'])
+    app.add_url_rule('/api/sessions/<int:session_id>', 'update_session', update_session, methods=['PUT'])
+    app.add_url_rule('/api/sessions/<int:session_id>', 'delete_session', delete_session, methods=['DELETE'])
+    app.add_url_rule('/api/sessions/<int:session_id>/messages', 'get_session_messages', get_session_messages, methods=['GET'])
+    app.add_url_rule('/api/sessions/<int:session_id>/stats', 'get_session_stats', get_session_stats, methods=['GET'])
 
 __all__ = ['register_routes']

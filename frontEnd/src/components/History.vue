@@ -1,7 +1,21 @@
 <template>
   <div class="history-container">
     <div class="history-header">
-      <h2>📋 对话历史记录</h2>
+      <div class="header-left">
+        <h2>📋 对话历史记录</h2>
+        <div v-if="currentSession" class="session-info">
+          <span class="session-name">{{ currentSession.name }}</span>
+          <button @click="showSessionSelector = !showSessionSelector" class="session-select-btn">
+            <span>▼</span>
+          </button>
+        </div>
+        <div v-else class="session-info">
+          <span class="no-session">未选择会话</span>
+          <button @click="showSessionSelector = !showSessionSelector" class="session-select-btn">
+            <span>选择会话</span>
+          </button>
+        </div>
+      </div>
       <div class="header-actions">
         <button @click="loadHistory" class="refresh-btn">
           <span>🔄</span>
@@ -11,6 +25,31 @@
           <span>🗑️</span>
           <span>清空历史</span>
         </button>
+      </div>
+    </div>
+
+    <!-- 会话选择器下拉菜单 -->
+    <div v-if="showSessionSelector" class="session-selector-overlay" @click="showSessionSelector = false"></div>
+    <div v-if="showSessionSelector" class="session-selector">
+      <div class="selector-header">
+        <h3>选择会话</h3>
+        <button @click="showSessionSelector = false" class="close-selector">✕</button>
+      </div>
+      <div v-if="sessionsLoading" class="loading-sessions">加载中...</div>
+      <div v-else-if="sessions.length === 0" class="no-sessions">
+        <p>暂无会话</p>
+        <button @click="createNewSession" class="create-session-btn">创建新会话</button>
+      </div>
+      <div v-else class="sessions-list">
+        <div
+          v-for="session in sessions"
+          :key="session.id"
+          :class="['session-item', { active: currentSession && currentSession.id === session.id }]"
+          @click="selectSession(session)"
+        >
+          <div class="session-item-name">{{ session.name }}</div>
+          <div class="session-item-meta">{{ session.message_count }} 条消息 · {{ formatSessionDate(session.updated_at) }}</div>
+        </div>
       </div>
     </div>
 
@@ -47,7 +86,7 @@
             <button @click.stop="evaluateMessage(msg)" class="evaluate-btn" :disabled="msg.evaluating">
               <span v-if="!msg.evaluating">⭐</span>
               <span v-else>⏳</span>
-              <span>{{ msg.evaluating ? '评分中...' : '评分' }}</span>
+              <span>{{ msg.evaluating ? '评估中...' : '评估' }}</span>
             </button>
           </div>
         </div>
@@ -63,7 +102,7 @@
         <div class="modal-body">
           <div class="full-message">{{ selectedMessage.content }}</div>
           <div v-if="selectedMessage.evaluation" class="evaluation-section">
-            <h4>评分结果</h4>
+            <h4>评估结果</h4>
             <div class="evaluation-grid">
               <div class="evaluation-item">
                 <span class="evaluation-label">逻辑思维</span>
@@ -114,9 +153,16 @@ const history = ref([])
 const loading = ref(false)
 const selectedMessage = ref(null)
 
+// 会话相关状态
+const currentSession = ref(null)
+const showSessionSelector = ref(false)
+const sessions = ref([])
+const sessionsLoading = ref(false)
+
 const API_URL = 'http://localhost:5000/api/chat/history'
 const CLEAR_API_URL = 'http://localhost:5000/api/chat/clear'
 const EVALUATE_API_URL = 'http://localhost:5000/api/evaluate'
+const SESSIONS_API_URL = 'http://localhost:5000/api/sessions'
 
 const getToken = () => {
   return localStorage.getItem('token')
@@ -139,6 +185,86 @@ const formatDate = (timestamp) => {
     return '昨天'
   } else {
     return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+  }
+}
+
+const formatSessionDate = (dateString) => {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+// 加载会话列表
+const loadSessions = async () => {
+  const token = getToken()
+  if (!token) return false
+
+  sessionsLoading.value = true
+  try {
+    const response = await fetch(SESSIONS_API_URL, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      sessions.value = data
+      return true
+    }
+    return false
+  } catch (error) {
+    console.error('加载会话失败:', error)
+    return false
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+// 选择会话
+const selectSession = async (session) => {
+  currentSession.value = session
+  showSessionSelector.value = false
+  // 保存到localStorage
+  localStorage.setItem('current_session_id', session.id)
+  localStorage.setItem('current_session_name', session.name)
+  // 加载该会话的消息
+  await loadHistory()
+}
+
+// 创建新会话
+const createNewSession = async () => {
+  const token = getToken()
+  if (!token) {
+    alert('请先登录')
+    return
+  }
+
+  const sessionName = prompt('请输入会话名称（可选）:') || ''
+
+  try {
+    const response = await fetch(SESSIONS_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ name: sessionName })
+    })
+
+    if (response.ok) {
+      const session = await response.json()
+      sessions.value.unshift(session)
+      await selectSession(session)
+      alert('会话创建成功！')
+    } else {
+      const error = await response.json()
+      alert('创建失败: ' + (error.error || '未知错误'))
+    }
+  } catch (error) {
+    console.error('创建会话失败:', error)
+    alert('创建失败，请稍后重试')
   }
 }
 
@@ -186,7 +312,12 @@ const loadHistory = async () => {
 
   loading.value = true
   try {
-    const response = await fetch(API_URL, {
+    let url = API_URL
+    if (currentSession.value) {
+      url += `?session_id=${currentSession.value.id}`
+    }
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -208,7 +339,13 @@ const loadHistory = async () => {
 }
 
 const clearHistory = async () => {
-  if (!confirm('确定要清空所有对话历史吗？')) {
+  // 确认清除
+  const sessionName = currentSession.value ? currentSession.value.name : '所有'
+  const confirmMessage = currentSession.value
+    ? `确定要清空会话 "${sessionName}" 的历史记录吗？`
+    : '确定要清空所有历史记录吗？'
+
+  if (!confirm(confirmMessage)) {
     return
   }
 
@@ -219,11 +356,18 @@ const clearHistory = async () => {
   }
 
   try {
+    const requestBody = {}
+    if (currentSession.value) {
+      requestBody.session_id = currentSession.value.id
+    }
+
     const response = await fetch(CLEAR_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
     })
 
     if (!response.ok) {
@@ -231,7 +375,7 @@ const clearHistory = async () => {
     }
 
     history.value = []
-    alert('对话历史已清空')
+    alert(currentSession.value ? '会话历史已清空' : '所有历史记录已清空')
   } catch (error) {
     console.error('清空历史失败:', error)
     alert('清空历史失败，请稍后重试')
@@ -266,14 +410,14 @@ const evaluateMessage = async (msg) => {
     })
 
     if (!response.ok) {
-      throw new Error('评分失败')
+      throw new Error('评估失败')
     }
 
     const data = await response.json()
     msg.evaluation = data
-    alert('评分完成！')
+    alert('评估完成！')
   } catch (error) {
-    console.error('评分失败:', error)
+    console.error('评估失败:', error)
     alert('评分失败，请稍后重试')
   } finally {
     msg.evaluating = false
