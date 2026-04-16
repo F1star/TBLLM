@@ -1,5 +1,6 @@
 import threading
 import logging
+from datetime import datetime
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -46,10 +47,11 @@ class ModelService:
             self._load_model()
 
     def _load_model(self):
-        print("Loading local model from:", MODEL_PATH)
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 加载本地模型从: {MODEL_PATH}")
 
         try:
             use_cuda = torch.cuda.is_available()
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] CUDA 可用: {use_cuda}")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 MODEL_PATH,
                 trust_remote_code=True,
@@ -67,14 +69,15 @@ class ModelService:
             self.model = AutoModelForCausalLM.from_pretrained(MODEL_PATH, **model_kwargs)
             self.model.eval()
             self.model.config.use_cache = True
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型加载成功，设备: {self.model.device}")
 
             # 根据配置选择Agent服务
             if USE_ADVANCED_AGENT and ADVANCED_AGENT_AVAILABLE:
                 try:
                     self.agent_service = self._create_advanced_agent()
-                    logger.info("已启用AdvancedAgent服务")
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 已启用AdvancedAgent服务")
                 except Exception as e:
-                    logger.error(f"AdvancedAgent创建失败，回退到原版AgentService: {str(e)}")
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AdvancedAgent创建失败，回退到原版AgentService: {str(e)}")
                     self.agent_service = AgentService(
                         tokenizer=self.tokenizer,
                         model=self.model,
@@ -86,10 +89,10 @@ class ModelService:
                     model=self.model,
                     max_new_tokens=MAX_NEW_TOKENS,
                 )
-                logger.info("使用原版AgentService")
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 使用原版AgentService")
         except Exception:
             import traceback
-
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型加载失败!")
             traceback.print_exc()
             self.model = None
             self.tokenizer = None
@@ -128,8 +131,10 @@ class ModelService:
 
     def generate_response(self, prompt, user_id, session_id=None):
         if self.model is None or self.tokenizer is None or self.agent_service is None:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型未加载，无法生成响应")
             return "模型未正确加载，请检查后端日志。"
 
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成聊天响应 - 用户ID: {user_id}, 会话ID: {session_id}, 提示: {prompt[:50]}...")
         with self.generate_lock:
             try:
                 history = ChatService.get_recent_chats(int(user_id), limit=10, session_id=session_id)
@@ -138,24 +143,36 @@ class ModelService:
                     message=prompt,
                     chat_history=history_text,
                 )
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 聊天响应生成完成，长度: {len(response)} 字符")
                 return response or "模型未生成有效内容。"
             except RuntimeError as e:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 推理运行时错误: {str(e)}")
                 if "out of memory" in str(e).lower():
                     torch.cuda.empty_cache()
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 已清理CUDA缓存")
                     return "显存不足，请重试或减少上下文。"
                 return f"推理错误: {str(e)}"
             except Exception as e:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Agent 推理异常: {str(e)}")
                 return f"Agent 推理错误: {str(e)}"
 
     def generate_evaluation(self, chat_history_text, file_context_text):
         if self.model is None or self.tokenizer is None or self.agent_service is None:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型未加载，无法生成评估")
             raise ValueError("模型未正确加载，请检查后端日志。")
 
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成能力评估 - 聊天历史长度: {len(chat_history_text)}, 文件上下文长度: {len(file_context_text)}")
         with self.generate_lock:
-            return self.agent_service.evaluate(
-                chat_history=chat_history_text,
-                file_context=file_context_text,
-            )
+            try:
+                result = self.agent_service.evaluate(
+                    chat_history=chat_history_text,
+                    file_context=file_context_text,
+                )
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 评估完成 - 逻辑: {result.get('logic_score')}, 创造力: {result.get('creativity_score')}, 表达: {result.get('expression_score')}, 知识: {result.get('knowledge_score')}")
+                return result
+            except Exception as e:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 评估过程异常: {str(e)}")
+                raise
 
     def is_busy(self):
         return self.generate_lock.locked()

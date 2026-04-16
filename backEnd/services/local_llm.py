@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import torch
@@ -37,6 +38,8 @@ class LocalChatLLM(LLM):
         if self.model is None or self.tokenizer is None:
             raise ValueError("Local model is not loaded")
 
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] LocalChatLLM._call - 提示长度: {len(prompt)}, max_new_tokens: {kwargs.get('max_new_tokens', self.max_new_tokens)}")
+
         messages = [
             {
                 "role": "system",
@@ -54,6 +57,7 @@ class LocalChatLLM(LLM):
             add_generation_prompt=True,
         )
         inputs = self.tokenizer([input_text], return_tensors="pt").to(self.model.device)
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] LocalChatLLM._call - 开始生成，输入长度: {inputs.input_ids.shape[1]}")
 
         with torch.inference_mode():
             outputs = self.model.generate(
@@ -71,6 +75,7 @@ class LocalChatLLM(LLM):
         input_length = inputs.input_ids.shape[1]
         response_ids = outputs[0][input_length:]
         response = self.tokenizer.decode(response_ids, skip_special_tokens=True).strip()
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] LocalChatLLM._call - 生成完成，响应长度: {len(response)}")
 
         if stop:
             for token in stop:

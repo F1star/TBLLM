@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Iterable, List, Optional, Dict, Any, Tuple
 
 from config.constants import USE_VECTOR_RETRIEVAL, RAG_TOP_K, RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP
-from services.file_service import FileService
+# 注意：FileService的导入已移到方法内部以避免循环导入
 
 # 尝试导入VectorStore，如果失败则使用降级方案
 try:
@@ -207,6 +207,9 @@ class RAGService:
         Returns:
             文档片段列表
         """
+        # 延迟导入以避免循环依赖
+        from services.file_service import FileService
+
         files = self._resolve_files(user_id, file_ids)
         if not files:
             return []
@@ -291,6 +294,9 @@ class RAGService:
             return False
 
     def _resolve_files(self, user_id: int, file_ids: Optional[Iterable[int]]) -> List:
+        # 延迟导入以避免循环依赖
+        from services.file_service import FileService
+
         if file_ids:
             files = []
             for file_id in file_ids:

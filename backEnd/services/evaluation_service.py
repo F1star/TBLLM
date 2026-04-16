@@ -1,4 +1,5 @@
 from config.settings import db
+from datetime import datetime
 from db_models.evaluation import Evaluation
 from services.chat_service import ChatService
 from services.file_service import FileService
@@ -15,24 +16,30 @@ class EvaluationService:
             file_ids: 文件ID列表
             session_id: 可选，会话ID。如果为None，则评估未关联到会话的历史记录
         """
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 用户ID: {user_id}, 文件IDs: {file_ids}, 会话ID: {session_id}")
         if session_id:
             # 评估特定会话
             user_chats = ChatService.get_user_history(user_id, session_id=session_id)
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 获取会话历史，记录数: {len(user_chats)}")
         else:
             # 评估未关联到会话的历史记录（旧历史）
             user_chats = ChatService.get_unassigned_chats(user_id)
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 获取未关联历史，记录数: {len(user_chats)}")
 
         try:
             chat_history_text = EvaluationService._build_chat_history_text(user_chats)
             file_context_text = EvaluationService._build_file_context_text(user_id, file_ids)
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 聊天历史长度: {len(chat_history_text)}, 文件上下文长度: {len(file_context_text)}")
 
             if chat_history_text == "暂无历史对话。" and file_context_text == "暂无文件内容。":
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 暂无可评估的历史对话或文件内容")
                 return None, "暂无可评估的历史对话或文件内容。"
 
             evaluation_data = model_service.generate_evaluation(
                 chat_history_text=chat_history_text,
                 file_context_text=file_context_text,
             )
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 模型评估完成")
 
             evaluation = Evaluation(
                 user_id=user_id,
@@ -47,11 +54,13 @@ class EvaluationService:
             )
             db.session.add(evaluation)
             db.session.commit()
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 评估记录已保存，ID: {evaluation.id}")
             return evaluation, None
         except Exception as e:
             import traceback
 
             traceback.print_exc()
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 评分失败: {str(e)}")
             return None, f"评分失败: {str(e)}"
 
     @staticmethod

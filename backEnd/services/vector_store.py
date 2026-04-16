@@ -100,6 +100,7 @@ class VectorStore:
                 self._chroma_client = chromadb.Client(
                     Settings(
                         persist_directory=self.persist_directory,
+                        is_persistent=True,
                         anonymized_telemetry=False
                     )
                 )

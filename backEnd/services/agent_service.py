@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from typing import Optional
 
 from langchain_core.prompts import PromptTemplate
@@ -67,21 +68,28 @@ class AgentService:
         )
 
     def chat(self, message: str, chat_history: str) -> str:
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.chat - 消息长度: {len(message)}, 历史长度: {len(chat_history)}")
         prompt = CHAT_PROMPT.format(
             input=message,
             chat_history=chat_history or "暂无历史对话。",
         )
-        return self.llm.invoke(prompt).strip()
+        response = self.llm.invoke(prompt).strip()
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.chat - 响应长度: {len(response)}")
+        return response
 
     def evaluate(self, chat_history: str, file_context: str) -> dict:
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.evaluate - 聊天历史长度: {len(chat_history)}, 文件上下文长度: {len(file_context)}")
         prompt = EVALUATION_PROMPT.format(
             chat_history=chat_history or "暂无历史对话。",
             file_context=file_context or "暂无文件内容。",
         )
         response = self.llm.invoke(prompt, max_new_tokens=512, temperature=0.2).strip()
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.evaluate - 原始响应长度: {len(response)}")
         parsed = self._extract_json(response)
         if parsed is None:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.evaluate - JSON解析失败: {response[:200]}")
             raise ValueError(f"评估结果解析失败: {response[:200]}")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.evaluate - 解析成功 - 逻辑: {parsed.get('logic_score')}, 创造力: {parsed.get('creativity_score')}, 表达: {parsed.get('expression_score')}, 知识: {parsed.get('knowledge_score')}")
         return parsed
 
     def _extract_json(self, text: str) -> Optional[dict]:
