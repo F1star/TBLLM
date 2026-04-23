@@ -1,46 +1,43 @@
 <template>
   <div class="chat-container">
+    <!-- Header -->
     <div class="chat-header">
       <div class="header-left">
-        <div class="header-icon">🤖</div>
-        <div class="header-title">
+        <div class="header-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="header-info">
           <h2>AI 对话助手</h2>
-          <div v-if="currentSession" class="session-info">
-            <span class="session-name">{{ currentSession.name }}</span>
+          <div class="session-info">
+            <span v-if="currentSession" class="session-name">{{ currentSession.name }}</span>
+            <span v-else class="no-session">未选择会话</span>
             <button @click="showSessionSelector = !showSessionSelector" class="session-select-btn">
-              <span>▼</span>
-            </button>
-          </div>
-          <div v-else class="session-info">
-            <span class="no-session">未选择会话</span>
-            <button @click="showSessionSelector = !showSessionSelector" class="session-select-btn">
-              <span>选择会话</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
           </div>
         </div>
       </div>
-      <div class="header-right">
-        <button @click="createNewSession" class="new-session-btn">
-          <span class="btn-icon">+</span>
-          <span>新建会话</span>
+      <div class="header-actions">
+        <button @click="createNewSession" class="action-btn" title="新建会话">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
-        <button v-if="currentSession" @click="evaluateSession" class="evaluate-btn">
-          <span class="btn-icon">📊</span>
-          <span>评估会话</span>
+        <button v-if="currentSession" @click="evaluateSession" class="action-btn" title="评估会话">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         </button>
-        <button @click="clearHistory" class="clear-btn">
-          <span class="btn-icon">🗑️</span>
-          <span>清除历史</span>
+        <button @click="clearHistory" class="action-btn danger" title="清除历史">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
       </div>
     </div>
 
-    <!-- 会话选择器下拉菜单 -->
-    <div v-if="showSessionSelector" class="session-selector-overlay" @click="showSessionSelector = false"></div>
+    <!-- Session Selector -->
+    <div v-if="showSessionSelector" class="selector-overlay" @click="showSessionSelector = false"></div>
     <div v-if="showSessionSelector" class="session-selector">
       <div class="selector-header">
         <h3>选择会话</h3>
-        <button @click="showSessionSelector = false" class="close-selector">✕</button>
+        <button @click="showSessionSelector = false" class="close-btn">&times;</button>
       </div>
       <div v-if="sessionsLoading" class="loading-sessions">加载中...</div>
       <div v-else-if="sessions.length === 0" class="no-sessions">
@@ -55,62 +52,72 @@
           @click="selectSession(session)"
         >
           <div class="session-item-name">{{ session.name }}</div>
-          <div class="session-item-meta">{{ session.message_count }} 条消息 · {{ formatDate(session.updated_at) }}</div>
+          <div class="session-item-meta">{{ session.message_count }} 条消息</div>
         </div>
       </div>
     </div>
-    
+
+    <!-- Messages -->
     <div class="chat-messages" ref="messagesContainer">
       <div v-if="messages.length === 0" class="empty-state">
-        <div class="empty-icon">🤖</div>
+        <div class="empty-icon">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
         <p class="empty-title">开始与AI助手对话吧！</p>
-        <p class="empty-hint">您可以询问任何问题，我会尽力为您解答。</p>
+        <p class="empty-hint">您可以询问任何问题，我会尽力为您解答</p>
         <div class="quick-actions">
-          <button @click="quickAsk('你好')" class="quick-btn">👋 你好</button>
-          <button @click="quickAsk('介绍一下你自己')" class="quick-btn">🎯 介绍自己</button>
-          <button @click="quickAsk('你能帮我做什么？')" class="quick-btn">💡 功能介绍</button>
+          <button @click="quickAsk('你好')" class="quick-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            你好</button>
+          <button @click="quickAsk('介绍一下你自己')" class="quick-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>
+            介绍自己</button>
+          <button @click="quickAsk('你能帮我做什么？')" class="quick-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            功能介绍</button>
         </div>
       </div>
-      
+
       <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
         <div class="message-avatar">
-          {{ msg.role === 'user' ? '👤' : '🤖' }}
+          <svg v-if="msg.role === 'assistant'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>
+          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <div class="message-content">
           <div class="message-text">{{ msg.content }}</div>
           <div class="message-time">{{ msg.time }}</div>
         </div>
       </div>
-      
-      <div v-if="isLoading" class="message assistant loading">
-        <div class="message-avatar">🤖</div>
+
+      <div v-if="isLoading" class="message assistant">
+        <div class="message-avatar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>
+        </div>
         <div class="message-content">
-          <div class="loading-dots">
-            <span></span>
-            <span></span>
-            <span></span>
+          <div class="typing-indicator">
+            <span></span><span></span><span></span>
           </div>
         </div>
       </div>
     </div>
-    
+
+    <!-- Input -->
     <div class="chat-input">
       <div class="input-wrapper">
-        <textarea 
-          v-model="inputMessage" 
+        <textarea
+          v-model="inputMessage"
           @keydown.enter.prevent="sendMessage"
           placeholder="输入您的问题..."
           rows="1"
           ref="inputArea"
           @input="autoResize"
         ></textarea>
-        <button 
-          @click="sendMessage" 
-          :disabled="!inputMessage.trim() || isLoading"
-          class="send-btn"
-        >
-          <span v-if="!isLoading">发送</span>
-          <span v-else>...</span>
+        <button @click="sendMessage" :disabled="!inputMessage.trim() || isLoading" class="send-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -126,7 +133,6 @@ const isLoading = ref(false)
 const messagesContainer = ref(null)
 const inputArea = ref(null)
 
-// 会话相关状态
 const currentSession = ref(null)
 const showSessionSelector = ref(false)
 const sessions = ref([])
@@ -136,24 +142,11 @@ const API_URL = 'http://localhost:5000/api/chat'
 const CLEAR_API_URL = 'http://localhost:5000/api/chat/clear'
 const EVALUATE_API_URL = 'http://localhost:5000/api/evaluate'
 
-const getToken = () => {
-  return localStorage.getItem('token')
-}
+const getToken = () => localStorage.getItem('token')
 
-const formatTime = (timestamp) => {
-  let date
-  if (timestamp) {
-    date = new Date(timestamp)
-  } else {
-    date = new Date()
-  }
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+const formatTime = (ts) => {
+  const d = ts ? new Date(ts) : new Date()
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
 const scrollToBottom = () => {
@@ -176,297 +169,149 @@ const sendMessage = async () => {
   if (!message || isLoading.value) return
 
   const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
+  if (!token) { alert('请先登录'); return }
 
-  messages.value.push({
-    role: 'user',
-    content: message,
-    time: formatTime()
-  })
-
+  messages.value.push({ role: 'user', content: message, time: formatTime() })
   inputMessage.value = ''
-  if (inputArea.value) {
-    inputArea.value.style.height = 'auto'
-  }
-
+  if (inputArea.value) inputArea.value.style.height = 'auto'
   isLoading.value = true
   scrollToBottom()
 
   try {
-    const requestBody = { message }
-    if (currentSession.value) {
-      requestBody.session_id = currentSession.value.id
-    }
-
-    const response = await fetch(API_URL, {
+    const body = { message }
+    if (currentSession.value) body.session_id = currentSession.value.id
+    const res = await fetch(API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(requestBody)
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(body)
     })
-
-    if (!response.ok) {
-      throw new Error('网络请求失败')
-    }
-
-    const data = await response.json()
-
-    messages.value.push({
-      role: 'assistant',
-      content: data.response,
-      time: formatTime()
-    })
-  } catch (error) {
-    console.error('发送消息失败:', error)
-    messages.value.push({
-      role: 'assistant',
-      content: '抱歉，发送消息时出现错误。请稍后重试。',
-      time: formatTime()
-    })
+    if (!res.ok) throw new Error('请求失败')
+    const data = await res.json()
+    messages.value.push({ role: 'assistant', content: data.response, time: formatTime() })
+  } catch (e) {
+    console.error('发送失败:', e)
+    messages.value.push({ role: 'assistant', content: '发送消息时出现错误，请稍后重试。', time: formatTime() })
   } finally {
     isLoading.value = false
     scrollToBottom()
   }
 }
 
-const quickAsk = (question) => {
-  inputMessage.value = question
-  sendMessage()
-}
+const quickAsk = (q) => { inputMessage.value = q; sendMessage() }
 
 const clearHistory = async () => {
-  const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
-
-  // 确认清除
-  const sessionName = currentSession.value ? currentSession.value.name : '所有'
-  const confirmMessage = currentSession.value
-    ? `确定要清空会话 "${sessionName}" 的历史记录吗？`
-    : '确定要清空所有历史记录吗？'
-
-  if (!confirm(confirmMessage)) {
-    return
-  }
-
-  try {
-    const requestBody = {}
-    if (currentSession.value) {
-      requestBody.session_id = currentSession.value.id
-    }
-
-    const response = await fetch(CLEAR_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    })
-
-    if (!response.ok) {
-      throw new Error('清除历史失败')
-    }
-
-    messages.value = []
-    alert(currentSession.value ? '会话历史已清除' : '所有历史记录已清除')
-  } catch (error) {
-    console.error('清除历史失败:', error)
-    alert('清除历史失败，请稍后重试')
-  }
-}
-
-// 评估当前会话
-const evaluateSession = async () => {
-  const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
-
-  if (!currentSession.value) {
-    alert('请先选择会话')
-    return
-  }
-
-  // 确认评估
-  if (!confirm(`确定要评估会话 "${currentSession.value.name}" 吗？`)) {
-    return
-  }
-
-  try {
-    const response = await fetch(EVALUATE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        session_id: currentSession.value.id
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || '评估失败')
-    }
-
-    const result = await response.json()
-
-    // 显示评估结果
-    const scoreText = `逻辑思维: ${result.logic_score}\n创造力: ${result.creativity_score}\n表达能力: ${result.expression_score}\n知识掌握: ${result.knowledge_score}\n综合得分: ${result.overall_score}\n\n反馈: ${result.feedback}`
-    alert(`评估完成！\n\n${scoreText}`)
-  } catch (error) {
-    console.error('评估失败:', error)
-    alert('评估失败: ' + error.message)
-  }
-}
-
-// 加载会话列表
-const loadSessions = async () => {
+  const name = currentSession.value ? currentSession.value.name : '所有'
+  if (!confirm(`确定要清空会话 "${name}" 的历史记录吗？`)) return
   const token = getToken()
   if (!token) return
-
-  sessionsLoading.value = true
   try {
-    const response = await fetch('http://localhost:5000/api/sessions', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+    const body = {}
+    if (currentSession.value) body.session_id = currentSession.value.id
+    const res = await fetch(CLEAR_API_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     })
-
-    if (response.ok) {
-      const data = await response.json()
-      sessions.value = data
-    }
-    return response.ok
-  } catch (error) {
-    console.error('加载会话失败:', error)
-    return false
-  } finally {
-    sessionsLoading.value = false
-  }
+    if (!res.ok) throw new Error('清除失败')
+    messages.value = []
+    alert('历史记录已清除')
+  } catch (e) { console.error(e); alert('清除失败') }
 }
 
-// 选择会话
+const evaluateSession = async () => {
+  if (!currentSession.value) { alert('请先选择会话'); return }
+  if (!confirm(`确定要评估会话 "${currentSession.value.name}" 吗？`)) return
+  const token = getToken()
+  try {
+    const res = await fetch(EVALUATE_API_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: currentSession.value.id })
+    })
+    if (!res.ok) throw new Error('评估失败')
+    const r = await res.json()
+    alert(`评估完成！\n逻辑思维: ${r.logic_score}\n创造力: ${r.creativity_score}\n表达能力: ${r.expression_score}\n知识掌握: ${r.knowledge_score}\n综合得分: ${r.overall_score}\n\n反馈: ${r.feedback}`)
+  } catch (e) { console.error(e); alert('评估失败: ' + e.message) }
+}
+
+const loadSessions = async () => {
+  const token = getToken()
+  if (!token) return false
+  sessionsLoading.value = true
+  try {
+    const res = await fetch('http://localhost:5000/api/sessions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (res.ok) { sessions.value = await res.json(); return true }
+    return false
+  } catch (e) { console.error(e); return false }
+  finally { sessionsLoading.value = false }
+}
+
 const selectSession = async (session) => {
   currentSession.value = session
   showSessionSelector.value = false
-  // 保存到localStorage
   localStorage.setItem('current_session_id', session.id)
   localStorage.setItem('current_session_name', session.name)
-  // 加载该会话的消息
   await loadSessionMessages()
 }
 
-// 创建新会话
 const createNewSession = async () => {
   const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
-
-  const sessionName = prompt('请输入会话名称（可选）:') || ''
-
+  if (!token) { alert('请先登录'); return }
+  const name = prompt('请输入会话名称（可选）:') || ''
   try {
-    const response = await fetch('http://localhost:5000/api/sessions', {
+    const res = await fetch('http://localhost:5000/api/sessions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ name: sessionName })
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name })
     })
-
-    if (response.ok) {
-      const session = await response.json()
+    if (res.ok) {
+      const session = await res.json()
       sessions.value.unshift(session)
       await selectSession(session)
-      alert('会话创建成功！')
     } else {
-      const error = await response.json()
-      alert('创建失败: ' + (error.error || '未知错误'))
+      const e = await res.json()
+      alert('创建失败: ' + (e.error || '未知错误'))
     }
-  } catch (error) {
-    console.error('创建会话失败:', error)
-    alert('创建失败，请稍后重试')
-  }
+  } catch (e) { console.error(e); alert('创建失败') }
 }
 
-// 加载当前会话的消息
 const loadSessionMessages = async () => {
-  if (!currentSession.value) {
-    messages.value = []
-    return
-  }
-
+  if (!currentSession.value) { messages.value = []; return }
   const token = getToken()
   if (!token) return
-
   try {
-    const response = await fetch(`http://localhost:5000/api/chat/history?session_id=${currentSession.value.id}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+    const res = await fetch(`http://localhost:5000/api/chat/history?session_id=${currentSession.value.id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
     })
-
-    if (response.ok) {
-      const data = await response.json()
-      messages.value = data.map(msg => ({
-        ...msg,
-        time: formatTime(msg.timestamp)
-      }))
+    if (res.ok) {
+      const data = await res.json()
+      messages.value = data.map(msg => ({ ...msg, time: formatTime(msg.timestamp) }))
       scrollToBottom()
     }
-  } catch (error) {
-    console.error('加载消息失败:', error)
-  }
+  } catch (e) { console.error(e) }
 }
 
 const initialize = async () => {
   await loadSessions()
-
-  // 从localStorage获取当前会话
-  const savedSessionId = localStorage.getItem('current_session_id')
-  const savedSessionName = localStorage.getItem('current_session_name')
-
-  if (savedSessionId && sessions.value.length > 0) {
-    const foundSession = sessions.value.find(s => s.id === parseInt(savedSessionId))
-    if (foundSession) {
-      currentSession.value = foundSession
+  const savedId = localStorage.getItem('current_session_id')
+  if (savedId && sessions.value.length > 0) {
+    const found = sessions.value.find(s => s.id === parseInt(savedId))
+    if (found) {
+      currentSession.value = found
       await loadSessionMessages()
     }
   }
-
   scrollToBottom()
 }
 
 onMounted(() => {
   initialize()
-
-  // 监听localStorage变化，当从其他页面切换会话时重新加载
-  window.addEventListener('storage', (event) => {
-    if (event.key === 'current_session_id' || event.key === 'current_session_name') {
-      // 重新初始化以加载新会话
-      initialize()
-    }
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'current_session_id' || e.key === 'current_session_name') initialize()
   })
-
-  // 监听自定义会话切换事件
-  window.addEventListener('session-changed', (event) => {
-    // 重新初始化以加载新会话
-    initialize()
-  })
+  window.addEventListener('session-changed', () => initialize())
 })
 </script>
 
@@ -475,105 +320,174 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  background: rgba(7,11,20,0.6);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  position: relative;
 }
 
 .chat-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  padding: 16px 24px;
+  background: rgba(13,20,33,0.6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+.header-left { display: flex; align-items: center; gap: 12px; }
 
 .header-icon {
-  font-size: 32px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-  animation: float 3s ease-in-out infinite;
+  width: 40px;
+  height: 40px;
+  background: rgba(0,229,255,0.08);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-cyan, #00e5ff);
 }
 
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
-}
-
-.chat-header h2 {
+.header-info h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8eaed;
+  letter-spacing: 1px;
   margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
 }
 
-.clear-btn {
-  padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.session-info {
   display: flex;
   align-items: center;
-  gap: 8px;
-  backdrop-filter: blur(10px);
+  gap: 6px;
+  margin-top: 4px;
 }
 
-.clear-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+.session-name, .no-session {
+  font-size: 11px;
+  color: #5a6275;
 }
 
-.evaluate-btn {
-  padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 12px;
+.session-select-btn {
+  background: none;
+  border: none;
+  color: #5a6275;
   cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 2px;
+  display: flex;
+  transition: color 0.2s;
+}
+
+.session-select-btn:hover { color: #00e5ff; }
+
+.header-actions { display: flex; gap: 8px; }
+
+.action-btn {
+  width: 36px;
+  height: 36px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: #5a6275;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
-  backdrop-filter: blur(10px);
+  justify-content: center;
+  transition: all 0.3s;
 }
 
-.evaluate-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+.action-btn:hover {
+  background: rgba(0,229,255,0.08);
+  color: #00e5ff;
+  border-color: rgba(0,229,255,0.2);
 }
 
-.btn-icon {
-  font-size: 16px;
+.action-btn.danger:hover {
+  background: rgba(255,23,68,0.08);
+  color: #ff1744;
+  border-color: rgba(255,23,68,0.2);
 }
 
+/* Session Selector */
+.selector-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200;
+}
+.session-selector {
+  position: absolute; top: 76px; left: 24px; width: 300px;
+  background: rgba(13,20,33,0.95);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,229,255,0.12);
+  border-radius: 12px;
+  z-index: 201;
+  max-height: 400px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.selector-header h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8eaed;
+  letter-spacing: 1px;
+}
+
+.close-btn {
+  background: none; border: none; color: #5a6275;
+  font-size: 20px; cursor: pointer;
+}
+
+.loading-sessions, .no-sessions { padding: 24px; text-align: center; color: #5a6275; font-size: 13px; }
+
+.create-session-btn {
+  margin-top: 12px;
+  padding: 8px 20px;
+  background: rgba(0,229,255,0.1);
+  color: #00e5ff;
+  border: 1px solid rgba(0,229,255,0.2);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sessions-list { overflow-y: auto; padding: 8px; }
+
+.session-item {
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 4px;
+}
+
+.session-item:hover { background: rgba(255,255,255,0.04); }
+.session-item.active { background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.12); }
+
+.session-item-name { font-size: 13px; color: #e8eaed; font-weight: 500; margin-bottom: 4px; }
+.session-item-meta { font-size: 11px; color: #5a6275; }
+
+/* Messages */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 32px;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .empty-state {
@@ -582,374 +496,211 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #64748b;
   text-align: center;
   padding: 40px 20px;
 }
 
-.empty-icon {
-  font-size: 80px;
-  margin-bottom: 24px;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.1));
-  animation: bounce 2s ease-in-out infinite;
-}
-
-@keyframes bounce {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
+.empty-icon { color: #5a6275; margin-bottom: 24px; }
 
 .empty-title {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: #1e293b;
-  letter-spacing: -0.5px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #e8eaed;
+  margin-bottom: 8px;
 }
 
-.empty-hint {
-  font-size: 16px;
-  color: #64748b;
-  margin-bottom: 32px;
-  font-weight: 500;
-}
+.empty-hint { font-size: 13px; color: #5a6275; margin-bottom: 28px; }
 
-.quick-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
+.quick-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 
 .quick-btn {
-  padding: 12px 24px;
-  background: white;
-  color: #667eea;
-  border: 2px solid rgba(102, 126, 234, 0.2);
-  border-radius: 12px;
+  padding: 10px 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: #8892a4;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
   cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .quick-btn:hover {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-  border-color: transparent;
+  background: rgba(0,229,255,0.08);
+  border-color: rgba(0,229,255,0.2);
+  color: #00e5ff;
 }
 
 .message {
   display: flex;
-  margin-bottom: 24px;
-  animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  gap: 12px;
+  animation: msgIn 0.3s ease;
 }
 
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.message.user {
-  flex-direction: row-reverse;
-}
+.message.user { flex-direction: row-reverse; }
 
 .message-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .message.user .message-avatar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  margin-left: 16px;
+  background: linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,77,255,0.15));
+  color: #00e5ff;
 }
 
 .message.assistant .message-avatar {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  margin-right: 16px;
+  background: linear-gradient(135deg, rgba(124,77,255,0.15), rgba(0,229,255,0.15));
+  color: #7c4dff;
 }
 
-.message-content {
-  max-width: 70%;
-  display: flex;
-  flex-direction: column;
-}
+.message-content { max-width: 70%; display: flex; flex-direction: column; gap: 4px; }
 
 .message-text {
-  padding: 16px 20px;
-  border-radius: 16px;
-  font-size: 16px;
-  line-height: 1.6;
-  word-wrap: break-word;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.7;
   white-space: pre-wrap;
-  font-weight: 500;
-;
+  word-wrap: break-word;
 }
 
 .message.user .message-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, rgba(0,229,255,0.1), rgba(124,77,255,0.1));
+  border: 1px solid rgba(0,229,255,0.15);
+  color: #e8eaed;
   border-bottom-right-radius: 4px;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .message.assistant .message-text {
-  background: white;
-  color: #1e293b;
-  border: 2px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #e8eaed;
   border-bottom-left-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .message-time {
-  font-size: 13px;
-  color: #94a3b8;
-  margin-top: 8px;
-  font-weight: 500;
+  font-size: 11px;
+  color: #5a6275;
+  padding: 0 4px;
 }
 
-.message.user .message-time {
-  text-align: right;
-}
+.message.user .message-time { text-align: right; }
 
-.message.loading .message-text {
-  background: #f8fafc;
-  color: #94a3b8;
-  border: 2px dashed rgba(0, 0, 0, 0.1);
-}
-
-.loading-dots {
+.typing-indicator {
   display: flex;
   gap: 6px;
-  padding: 16px 20px;
-  background: white;
-  border-radius: 16px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
   border-bottom-left-radius: 4px;
-  border: 2px solid rgba(0, 0, 0, 0.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.loading-dots span {
-  width: 10px;
-  height: 10px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.typing-indicator span {
+  width: 8px; height: 8px;
+  background: linear-gradient(135deg, #00e5ff, #7c4dff);
   border-radius: 50%;
-  animation: bounce 1.4s infinite ease-in-out both;
+  animation: typingBounce 1.4s infinite ease-in-out both;
 }
 
-.loading-dots span:nth-child(1) {
-  animation-delay: -0.32s;
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
 }
 
-.loading-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes bounce {
-  0%, 80%, 100% {
-    transform: scale(0);
-  }
-  40% {
-    transform: scale(1);
-  }
-}
-
+/* Input */
 .chat-input {
-  padding: 24px 32px;
-  background: white;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+  padding: 16px 24px;
+  background: rgba(13,20,33,0.6);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
 }
 
 .input-wrapper {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: flex-end;
-  max-width: 100%;
 }
 
 textarea {
   flex: 1;
-  padding: 16px 20px;
-  border: 2px solid rgba(0, 0, 0, 0.1);
-  border-radius: 16px;
-  font-size: 16px;
-  font-family: inherit;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  color: #e8eaed;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
   resize: none;
   outline: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 56px;
+  transition: all 0.3s;
+  min-height: 44px;
   max-height: 150px;
-  background: #f8fafc;
-  color: #1e293b;
-  font-weight: 500;
   line-height: 1.5;
 }
 
 textarea:focus {
-  border-color: #667eea;
-  background: white;
-  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  border-color: rgba(0,229,255,0.3);
+  box-shadow: 0 0 20px rgba(0,229,255,0.04);
 }
 
-textarea::placeholder {
-  color: #94a3b8;
-}
+textarea::placeholder { color: #3a4258; }
 
 .send-btn {
-  padding: 16px 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,77,255,0.15));
+  border: 1px solid rgba(0,229,255,0.2);
+  border-radius: 10px;
+  color: #00e5ff;
   cursor: pointer;
-  font-size: 16px;
-  font-weight: 700;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  min-width: 100px;
-  height: 56px;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+  background: linear-gradient(135deg, rgba(0,229,255,0.25), rgba(124,77,255,0.25));
+  box-shadow: 0 0 20px rgba(0,229,255,0.12);
 }
 
-.send-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-.send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.chat-messages::-webkit-scrollbar {
-  width: 8px;
-}
-
-.chat-messages::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 4px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-  border-radius: 4px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #764ba2 0%, #667eea 100%);
-}
+.chat-messages::-webkit-scrollbar { width: 4px; }
+.chat-messages::-webkit-scrollbar-track { background: transparent; }
+.chat-messages::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.12); border-radius: 2px; }
 
 @media (max-width: 768px) {
-  .chat-header {
-    padding: 20px 24px;
-  }
-  
-  .chat-header h2 {
-    font-size: 20px;
-  }
-  
-  .chat-messages {
-    padding: 24px 20px;
-  }
-  
-  .message-content {
-    max-width: 85%;
-  }
-  
-  .chat-input {
-    padding: 20px 24px;
-  }
-  
-  .quick-actions {
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .quick-btn {
-    width: 100%;
-  }
+  .chat-header { padding: 14px 18px; }
+  .chat-messages { padding: 18px; }
+  .message-content { max-width: 85%; }
+  .chat-input { padding: 14px 18px; }
+  .quick-actions { flex-direction: column; }
+  .quick-btn { width: 100%; }
 }
 
 @media (max-width: 480px) {
-  .chat-header {
-    padding: 16px 20px;
-  }
-  
-  .chat-header h2 {
-    font-size: 18px;
-  }
-  
-  .header-icon {
-    font-size: 28px;
-  }
-  
-  .clear-btn {
-    padding: 8px 16px;
-    font-size: 14px;
-  }
-  
-  .chat-messages {
-    padding: 20px 16px;
-  }
-  
-  .message-avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
-  }
-  
-  .message-text {
-    padding: 14px 18px;
-    font-size: 15px;
-  }
-  
-  .chat-input {
-    padding: 16px 20px;
-  }
-  
-  .input-wrapper {
-    gap: 12px;
-  }
-  
-  textarea {
-    padding: 14px 18px;
-    font-size: 15px;
-    min-height: 48px;
-  }
-  
-  .send-btn {
-    padding: 14px 24px;
-    font-size: 15px;
-    min-width: 80px;
-    height: 48px;
-  }
+  .message-avatar { width: 32px; height: 32px; }
+  .message-text { font-size: 12px; padding: 10px 14px; }
+  .send-btn { width: 40px; height: 40px; }
 }
 </style>

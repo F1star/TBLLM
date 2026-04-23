@@ -2,30 +2,34 @@
   <div class="sessions-container">
     <div class="sessions-header">
       <h2>会话管理</h2>
-      <button class="create-session-btn" @click="createNewSession">
-        <span>+ 新建会话</span>
+      <button class="create-btn" @click="showCreateModal = true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        新建会话
       </button>
     </div>
 
-    <div v-if="loading" class="loading">
-      <div class="spinner"></div>
+    <div v-if="loading" class="loading-state">
+      <div class="loader"></div>
       <p>加载中...</p>
     </div>
 
-    <div v-else-if="error" class="error">
+    <div v-else-if="error" class="error-state">
       <p>{{ error }}</p>
-      <button @click="loadSessions">重试</button>
+      <button @click="loadSessions" class="retry-btn">重试</button>
     </div>
 
     <div v-else-if="sessions.length === 0" class="empty-state">
-      <div class="empty-icon">💬</div>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
       <h3>还没有会话</h3>
       <p>创建一个新会话来开始对话吧</p>
-      <button class="create-btn" @click="createNewSession">创建会话</button>
+      <button class="create-btn" @click="showCreateModal = true">创建会话</button>
     </div>
 
     <div v-else class="sessions-grid">
       <div v-for="session in sessions" :key="session.id" class="session-card">
+        <div class="card-accent"></div>
         <div class="session-card-header">
           <div class="session-title">
             <input
@@ -38,105 +42,82 @@
               type="text"
               placeholder="会话标题"
             />
-            <h3 v-else @click="startEdit(session)" class="title-text">
-              {{ session.name }}
-            </h3>
+            <h3 v-else @click="startEdit(session)">{{ session.name }}</h3>
           </div>
           <div class="session-actions">
-            <button class="icon-btn" @click="startEdit(session)" title="编辑标题">
-              ✏️
+            <button @click="startEdit(session)" class="icon-btn" title="编辑">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
-            <button class="icon-btn" @click="deleteSession(session)" title="删除会话">
-              🗑️
+            <button @click="deleteSession(session)" class="icon-btn danger" title="删除">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
         </div>
 
         <div class="session-stats">
-          <div class="stat">
+          <div class="stat-item">
             <span class="stat-label">消息数</span>
-            <span class="stat-value">{{ session.message_count }}</span>
+            <span class="stat-val">{{ session.message_count }}</span>
           </div>
-          <div class="stat">
-            <span class="stat-label">创建时间</span>
-            <span class="stat-value">{{ formatDate(session.created_at) }}</span>
+          <div class="stat-item">
+            <span class="stat-label">创建</span>
+            <span class="stat-val">{{ formatDate(session.created_at) }}</span>
           </div>
-          <div class="stat">
-            <span class="stat-label">最后更新</span>
-            <span class="stat-value">{{ formatDate(session.updated_at) }}</span>
+          <div class="stat-item">
+            <span class="stat-label">更新</span>
+            <span class="stat-val">{{ formatDate(session.updated_at) }}</span>
           </div>
         </div>
 
         <div class="session-actions-row">
-          <button class="action-btn primary" @click="openSession(session)">
-            打开会话
-          </button>
-          <button class="action-btn" @click="viewSessionMessages(session)">
-            查看消息
-          </button>
-          <button class="action-btn" @click="evaluateSession(session)">
-            评估会话
-          </button>
+          <button class="action-btn primary" @click="openSession(session)">打开</button>
+          <button class="action-btn" @click="viewSessionMessages(session)">消息</button>
+          <button class="action-btn" @click="evaluateSession(session)">评估</button>
         </div>
       </div>
     </div>
 
-    <!-- 创建会话模态框 -->
-    <div v-if="showCreateModal" class="modal-overlay">
+    <!-- Create Modal -->
+    <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
       <div class="modal">
         <div class="modal-header">
           <h3>创建新会话</h3>
-          <button class="close-btn" @click="showCreateModal = false">×</button>
+          <button @click="showCreateModal = false" class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
             <label for="session-name">会话名称</label>
-            <input
-              id="session-name"
-              v-model="newSessionName"
-              type="text"
-              placeholder="请输入会话名称"
-              @keyup.enter="confirmCreateSession"
-            />
-            <p class="hint">如果不填，将使用第一条消息自动生成标题</p>
+            <input id="session-name" v-model="newSessionName" type="text" placeholder="请输入会话名称" @keyup.enter="confirmCreateSession" />
+            <p class="hint">留空将使用第一条消息自动生成标题</p>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="showCreateModal = false">
-            取消
-          </button>
-          <button class="btn-primary" @click="confirmCreateSession">
-            创建
-          </button>
+          <button class="modal-btn secondary" @click="showCreateModal = false">取消</button>
+          <button class="modal-btn primary" @click="confirmCreateSession">创建</button>
         </div>
       </div>
     </div>
 
-    <!-- 查看消息模态框 -->
-    <div v-if="showMessagesModal" class="modal-overlay">
-      <div class="modal modal-large">
+    <!-- Messages Modal -->
+    <div v-if="showMessagesModal" class="modal-overlay" @click.self="showMessagesModal = false">
+      <div class="modal modal-lg">
         <div class="modal-header">
-          <h3>会话消息：{{ selectedSession ? selectedSession.name : '' }}</h3>
-          <button class="close-btn" @click="showMessagesModal = false">×</button>
+          <h3>{{ selectedSession ? selectedSession.name : '' }}</h3>
+          <button @click="showMessagesModal = false" class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
-          <div v-if="messagesLoading" class="loading-messages">
-            <div class="spinner"></div>
-            <p>加载消息中...</p>
-          </div>
-          <div v-else-if="sessionMessages.length === 0" class="empty-messages">
-            <p>该会话还没有消息</p>
-          </div>
+          <div v-if="messagesLoading" class="loading-state"><div class="loader"></div></div>
+          <div v-else-if="sessionMessages.length === 0" class="empty-inner">该会话还没有消息</div>
           <div v-else class="messages-list">
-            <div v-for="msg in sessionMessages" :key="msg.id" class="message-item">
-              <div class="message-role">{{ msg.role === 'user' ? '👤 用户' : '🤖 AI助手' }}</div>
-              <div class="message-content">{{ msg.content }}</div>
-              <div class="message-time">{{ formatDateTime(msg.timestamp) }}</div>
+            <div v-for="msg in sessionMessages" :key="msg.id" class="msg-item">
+              <div class="msg-role">{{ msg.role === 'user' ? '用户' : 'AI助手' }}</div>
+              <div class="msg-content">{{ msg.content }}</div>
+              <div class="msg-time">{{ formatDateTime(msg.timestamp) }}</div>
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="showMessagesModal = false">关闭</button>
+          <button class="modal-btn secondary" @click="showMessagesModal = false">关闭</button>
         </div>
       </div>
     </div>
@@ -148,267 +129,125 @@ export default {
   name: 'Sessions',
   data() {
     return {
-      sessions: [],
-      loading: false,
-      error: null,
-      showCreateModal: false,
-      newSessionName: '',
-      // 消息查看模态框
-      showMessagesModal: false,
-      selectedSession: null,
-      sessionMessages: [],
-      messagesLoading: false,
-      // 评估相关
-      evaluateLoading: false,
+      sessions: [], loading: false, error: null,
+      showCreateModal: false, newSessionName: '',
+      showMessagesModal: false, selectedSession: null, sessionMessages: [], messagesLoading: false
     };
   },
-  mounted() {
-    this.loadSessions();
-  },
+  mounted() { this.loadSessions(); },
   methods: {
     async loadSessions() {
-      this.loading = true;
-      this.error = null;
+      this.loading = true; this.error = null;
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:5000/api/sessions', {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+        const res = await fetch('http://localhost:5000/api/sessions', {
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (response.ok) {
-          const data = await response.json();
-          this.sessions = data.map(session => ({
-            ...session,
-            editing: false,
-            editName: session.name
-          }));
+        if (res.ok) {
+          this.sessions = (await res.json()).map(s => ({ ...s, editing: false, editName: s.name }));
         } else {
-          const error = await response.json();
-          this.error = error.error || '加载会话失败';
+          const e = await res.json();
+          this.error = e.error || '加载失败';
         }
-      } catch (err) {
-        console.error('加载会话失败:', err);
-        this.error = '网络错误，请检查连接';
-      } finally {
-        this.loading = false;
-      }
+      } catch (err) { this.error = '网络错误'; }
+      finally { this.loading = false; }
     },
-
-    createNewSession() {
-      this.newSessionName = '';
-      this.showCreateModal = true;
-    },
-
     async confirmCreateSession() {
-      if (!this.newSessionName.trim()) {
-        this.newSessionName = '';
-      }
-
       const token = localStorage.getItem('token');
       try {
-        const response = await fetch('http://localhost:5000/api/sessions', {
+        const res = await fetch('http://localhost:5000/api/sessions', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ name: this.newSessionName })
         });
-
-        if (response.ok) {
-          const session = await response.json();
-          this.sessions.unshift({
-            ...session,
-            editing: false,
-            editName: session.name
-          });
+        if (res.ok) {
+          const session = await res.json();
+          this.sessions.unshift({ ...session, editing: false, editName: session.name });
           this.showCreateModal = false;
-          alert('会话创建成功！');
+          this.newSessionName = '';
         } else {
-          const error = await response.json();
-          alert('创建失败: ' + (error.error || '未知错误'));
+          const e = await res.json();
+          alert('创建失败: ' + (e.error || '未知错误'));
         }
-      } catch (err) {
-        console.error('创建会话失败:', err);
-        alert('创建失败，请稍后重试');
-      }
+      } catch (err) { alert('创建失败'); }
     },
-
     startEdit(session) {
       session.editing = true;
       session.editName = session.name;
-      // 下一个tick聚焦输入框
-      this.$nextTick(() => {
-        const input = this.$el.querySelector('.title-input');
-        if (input) input.focus();
-      });
+      this.$nextTick(() => { const el = this.$el.querySelector('.title-input'); if (el) el.focus(); });
     },
-
     async saveSessionName(session) {
-      if (!session.editName.trim()) {
-        session.editName = session.name;
-      }
-
-      if (session.editName === session.name) {
-        session.editing = false;
-        return;
-      }
-
+      if (!session.editName.trim()) session.editName = session.name;
+      if (session.editName === session.name) { session.editing = false; return; }
       const token = localStorage.getItem('token');
       try {
-        const response = await fetch(`http://localhost:5000/api/sessions/${session.id}`, {
+        const res = await fetch(`http://localhost:5000/api/sessions/${session.id}`, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ name: session.editName })
         });
-
-        if (response.ok) {
-          const updatedSession = await response.json();
-          session.name = updatedSession.name;
+        if (res.ok) {
+          session.name = (await res.json()).name;
           session.editing = false;
-          alert('会话名称已更新');
-        } else {
-          const error = await response.json();
-          alert('更新失败: ' + (error.error || '未知错误'));
-          session.editing = false;
-        }
-      } catch (err) {
-        console.error('更新会话失败:', err);
-        alert('更新失败，请稍后重试');
-        session.editing = false;
-      }
+        } else { session.editing = false; }
+      } catch (err) { session.editing = false; }
     },
-
-    cancelEdit(session) {
-      session.editing = false;
-    },
-
+    cancelEdit(session) { session.editing = false; },
     async deleteSession(session) {
-      if (!confirm(`确定要删除会话 "${session.name}" 吗？`)) {
-        return;
-      }
-
+      if (!confirm(`确定要删除 "${session.name}" 吗？`)) return;
       const token = localStorage.getItem('token');
       try {
-        const response = await fetch(`http://localhost:5000/api/sessions/${session.id}`, {
+        const res = await fetch(`http://localhost:5000/api/sessions/${session.id}`, {
           method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ delete_messages: false })
         });
-
-        if (response.ok) {
-          this.sessions = this.sessions.filter(s => s.id !== session.id);
-          alert('会话删除成功');
-        } else {
-          const error = await response.json();
-          alert('删除失败: ' + (error.error || '未知错误'));
-        }
-      } catch (err) {
-        console.error('删除会话失败:', err);
-        alert('删除失败，请稍后重试');
-      }
+        if (res.ok) { this.sessions = this.sessions.filter(s => s.id !== session.id); }
+        else { const e = await res.json(); alert('删除失败: ' + (e.error || '未知错误')); }
+      } catch (err) { alert('删除失败'); }
     },
-
     openSession(session) {
-      // 切换到聊天页面并设置当前会话
       this.$parent.currentPage = 'chat';
-      // 传递会话ID到聊天组件，需要全局状态管理或事件总线
-      // 暂时使用简单方式：存储到localStorage
       localStorage.setItem('current_session_id', session.id);
       localStorage.setItem('current_session_name', session.name);
-      // 触发自定义事件，通知聊天组件会话已切换
-      window.dispatchEvent(new CustomEvent('session-changed', {
-        detail: { sessionId: session.id, sessionName: session.name }
-      }));
-      alert(`已切换到会话 "${session.name}"，请在聊天页面开始对话`);
+      window.dispatchEvent(new CustomEvent('session-changed'));
     },
-
     async viewSessionMessages(session) {
-      this.selectedSession = session
-      this.showMessagesModal = true
-      this.sessionMessages = []
-      this.messagesLoading = true
-
+      this.selectedSession = session;
+      this.showMessagesModal = true;
+      this.sessionMessages = [];
+      this.messagesLoading = true;
       try {
-        const token = localStorage.getItem('token')
-        const response = await fetch(`http://localhost:5000/api/chat/history?session_id=${session.id}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          this.sessionMessages = data
-        } else {
-          const error = await response.json()
-          alert('加载消息失败: ' + (error.error || '未知错误'))
-        }
-      } catch (err) {
-        console.error('加载消息失败:', err)
-        alert('网络错误，请检查连接')
-      } finally {
-        this.messagesLoading = false
-      }
+        const token = localStorage.getItem('token');
+        const res = await fetch(`http://localhost:5000/api/chat/history?session_id=${session.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) this.sessionMessages = await res.json();
+      } catch (err) { alert('加载失败'); }
+      finally { this.messagesLoading = false; }
     },
-
-    formatDateTime(timestamp) {
-      if (!timestamp) return '-'
-      const date = new Date(timestamp)
-      return date.toLocaleString('zh-CN')
-    },
-
     async evaluateSession(session) {
-      if (!confirm(`确定要评估会话 "${session.name}" 吗？`)) {
-        return
-      }
-
-      this.evaluateLoading = true
+      if (!confirm(`确定要评估 "${session.name}" 吗？`)) return;
+      const token = localStorage.getItem('token');
       try {
-        const token = localStorage.getItem('token')
-        const response = await fetch('http://localhost:5000/api/evaluate', {
+        const res = await fetch('http://localhost:5000/api/evaluate', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            session_id: session.id
-          })
-        })
-
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || '评估失败')
-        }
-
-        const result = await response.json()
-
-        // 显示评估结果
-        const scoreText = `逻辑思维: ${result.logic_score}\n创造力: ${result.creativity_score}\n表达能力: ${result.expression_score}\n知识掌握: ${result.knowledge_score}\n综合得分: ${result.overall_score}\n\n反馈: ${result.feedback}`
-        alert(`评估完成！\n\n${scoreText}`)
-      } catch (err) {
-        console.error('评估失败:', err)
-        alert('评估失败: ' + err.message)
-      } finally {
-        this.evaluateLoading = false
-      }
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: session.id })
+        });
+        if (!res.ok) throw new Error('评估失败');
+        const r = await res.json();
+        alert(`评估完成！\n综合得分: ${r.overall_score}\n\n反馈: ${r.feedback}`);
+      } catch (err) { alert('评估失败: ' + err.message); }
     },
-
-    formatDate(dateString) {
-      if (!dateString) return '-';
-      const date = new Date(dateString);
-      return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    formatDate(ts) {
+      if (!ts) return '-';
+      const d = new Date(ts);
+      return d.toLocaleDateString('zh-CN');
+    },
+    formatDateTime(ts) {
+      if (!ts) return '-';
+      return new Date(ts).toLocaleString('zh-CN');
     }
   }
 };
@@ -416,7 +255,7 @@ export default {
 
 <style scoped>
 .sessions-container {
-  padding: 20px;
+  padding: 0;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -425,253 +264,265 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
-}
-
-.sessions-header h2 {
-  font-size: 28px;
-  color: #1e293b;
-}
-
-.create-session-btn {
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.create-session-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-}
-
-.loading {
-  text-align: center;
-  padding: 60px 0;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #e2e8f0;
-  border-top-color: #667eea;
-  border-radius: 50%;
-  margin: 0 auto 16px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error {
-  text-align: center;
-  padding: 40px;
-  background: #fee2e2;
-  border-radius: 12px;
-  color: #dc2626;
-}
-
-.error button {
-  margin-top: 16px;
-  padding: 8px 16px;
-  background: #dc2626;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 80px 20px;
-  background: white;
-  border-radius: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
-
-.empty-icon {
-  font-size: 64px;
-  margin-bottom: 20px;
-  opacity: 0.5;
-}
-
-.empty-state h3 {
-  font-size: 24px;
-  color: #1e293b;
-  margin-bottom: 12px;
-}
-
-.empty-state p {
-  color: #64748b;
   margin-bottom: 24px;
 }
 
-.create-btn {
-  padding: 12px 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
+.sessions-header h2 {
+  font-family: 'Orbitron', sans-serif;
   font-size: 16px;
   font-weight: 600;
-  cursor: pointer;
+  color: #e8eaed;
+  letter-spacing: 1px;
 }
+
+.create-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: rgba(0,229,255,0.08);
+  color: #00e5ff;
+  border: 1px solid rgba(0,229,255,0.2);
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.create-btn:hover {
+  background: rgba(0,229,255,0.15);
+  box-shadow: 0 0 20px rgba(0,229,255,0.1);
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  color: #5a6275;
+  font-size: 13px;
+  gap: 16px;
+}
+
+.loader {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(0,229,255,0.1);
+  border-top-color: #00e5ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-state {
+  text-align: center;
+  padding: 40px;
+  background: rgba(255,23,68,0.06);
+  border: 1px solid rgba(255,23,68,0.12);
+  border-radius: 12px;
+  color: #ff1744;
+  font-size: 13px;
+}
+
+.retry-btn {
+  margin-top: 12px;
+  padding: 8px 20px;
+  background: rgba(255,23,68,0.1);
+  color: #ff1744;
+  border: 1px solid rgba(255,23,68,0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80px 20px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  text-align: center;
+  gap: 12px;
+}
+
+.empty-state h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 16px;
+  color: #e8eaed;
+  letter-spacing: 1px;
+}
+
+.empty-state p { font-size: 13px; color: #5a6275; }
 
 .sessions-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
 }
 
 .session-card {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
   transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
 }
 
 .session-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  border-color: rgba(0,229,255,0.15);
+  background: rgba(255,255,255,0.03);
+  box-shadow: 0 0 30px rgba(0,229,255,0.04);
+  transform: translateY(-2px);
+}
+
+.card-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent);
 }
 
 .session-card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
-.session-title {
-  flex: 1;
-  margin-right: 12px;
-}
+.session-title { flex: 1; margin-right: 12px; }
 
 .title-input {
   width: 100%;
   padding: 8px 12px;
-  border: 2px solid #667eea;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
+  background: rgba(0,229,255,0.06);
+  border: 1px solid rgba(0,229,255,0.25);
+  border-radius: 6px;
+  color: #e8eaed;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
   outline: none;
 }
 
-.title-text {
-  font-size: 20px;
-  color: #1e293b;
-  margin: 0;
+.session-title h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e8eaed;
   cursor: pointer;
   padding: 4px 0;
-  border-bottom: 2px dashed transparent;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.2s;
 }
 
-.title-text:hover {
-  border-bottom-color: #cbd5e1;
-}
+.session-title h3:hover { border-bottom-color: #3a4258; }
 
-.session-actions {
-  display: flex;
-  gap: 8px;
-}
+.session-actions { display: flex; gap: 6px; }
 
 .icon-btn {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px;
+  width: 32px; height: 32px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
   border-radius: 6px;
-  transition: background 0.2s;
+  color: #5a6275;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
 .icon-btn:hover {
-  background: #f1f5f9;
+  background: rgba(0,229,255,0.08);
+  color: #00e5ff;
+  border-color: rgba(0,229,255,0.2);
+}
+
+.icon-btn.danger:hover {
+  background: rgba(255,23,68,0.08);
+  color: #ff1744;
+  border-color: rgba(255,23,68,0.2);
 }
 
 .session-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 
-.stat {
+.stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+  gap: 4px;
 }
 
 .stat-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 4px;
-  font-weight: 500;
+  font-size: 10px;
+  color: #5a6275;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.stat-value {
-  font-size: 16px;
-  font-weight: 700;
-  color: #1e293b;
+.stat-val {
+  font-size: 13px;
+  font-weight: 500;
+  color: #8892a4;
 }
 
 .session-actions-row {
   display: flex;
-  gap: 12px;
-  margin-top: auto;
+  gap: 8px;
 }
 
 .action-btn {
   flex: 1;
-  padding: 10px 16px;
-  background: #f1f5f9;
-  color: #475569;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  color: #8892a4;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
 }
 
 .action-btn:hover {
-  background: #e2e8f0;
-  transform: translateY(-2px);
+  border-color: rgba(255,255,255,0.15);
+  color: #e8eaed;
 }
 
 .action-btn.primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: rgba(0,229,255,0.08);
+  color: #00e5ff;
+  border-color: rgba(0,229,255,0.15);
 }
 
 .action-btn.primary:hover {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  background: rgba(0,229,255,0.15);
+  box-shadow: 0 0 16px rgba(0,229,255,0.08);
 }
 
-/* 模态框样式 */
+/* Modal */
 .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -679,172 +530,164 @@ export default {
 }
 
 .modal {
-  background: white;
+  background: rgba(13,20,33,0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,229,255,0.1);
   border-radius: 16px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
+
+.modal-lg { max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .modal-header h3 {
-  margin: 0;
-  color: #1e293b;
-  font-size: 20px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8eaed;
+  letter-spacing: 0.5px;
 }
 
-.close-btn {
+.modal-close {
   background: none;
   border: none;
+  color: #5a6275;
   font-size: 24px;
   cursor: pointer;
-  color: #64748b;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
+  transition: color 0.2s;
 }
 
-.close-btn:hover {
-  background: #f1f5f9;
-}
+.modal-close:hover { color: #e8eaed; }
 
-.modal-body {
-  padding: 24px;
-}
+.modal-body { padding: 24px; overflow-y: auto; }
 
-.form-group {
-  margin-bottom: 20px;
-}
+.form-group { margin-bottom: 20px; }
 
 .form-group label {
   display: block;
+  font-size: 11px;
+  color: #5a6275;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   margin-bottom: 8px;
-  color: #475569;
-  font-weight: 600;
 }
 
 .form-group input {
   width: 100%;
   padding: 12px 16px;
-  border: 2px solid #e2e8f0;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px;
-  font-size: 16px;
-  transition: border 0.2s;
+  color: #e8eaed;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.3s;
 }
 
 .form-group input:focus {
-  outline: none;
-  border-color: #667eea;
+  border-color: rgba(0,229,255,0.3);
 }
 
-.hint {
-  font-size: 13px;
-  color: #94a3b8;
-  margin-top: 8px;
-}
+.hint { font-size: 11px; color: #5a6275; margin-top: 8px; }
 
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 24px;
-  border-top: 1px solid #e2e8f0;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255,255,255,0.06);
 }
 
-.btn-secondary {
+.modal-btn {
   padding: 10px 20px;
-  background: #f1f5f9;
-  color: #475569;
-  border: none;
   border-radius: 8px;
-  font-weight: 600;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
   cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
 }
 
-.btn-primary {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
+.modal-btn.secondary {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #5a6275;
 }
 
-/* 消息模态框样式 */
-.modal-large {
-  max-width: 800px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
+.modal-btn.secondary:hover { background: rgba(255,255,255,0.06); }
+
+.modal-btn.primary {
+  background: rgba(0,229,255,0.1);
+  border: 1px solid rgba(0,229,255,0.2);
+  color: #00e5ff;
 }
 
-.loading-messages {
-  text-align: center;
-  padding: 40px;
-}
-
-.empty-messages {
-  text-align: center;
-  padding: 40px;
-  color: #64748b;
+.modal-btn.primary:hover {
+  background: rgba(0,229,255,0.18);
+  box-shadow: 0 0 16px rgba(0,229,255,0.08);
 }
 
 .messages-list {
   max-height: 400px;
   overflow-y: auto;
-  padding-right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.message-item {
-  margin-bottom: 20px;
+.msg-item {
   padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
 }
 
-.message-role {
+.msg-role {
+  font-size: 11px;
   font-weight: 600;
-  color: #475569;
+  color: #00e5ff;
   margin-bottom: 8px;
-  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.message-content {
-  color: #1e293b;
+.msg-content {
+  font-size: 13px;
+  color: #e8eaed;
   line-height: 1.6;
-  margin-bottom: 8px;
   white-space: pre-wrap;
+  margin-bottom: 8px;
 }
 
-.message-time {
-  font-size: 12px;
-  color: #94a3b8;
+.msg-time {
+  font-size: 11px;
+  color: #5a6275;
   text-align: right;
 }
 
+.empty-inner {
+  text-align: center;
+  padding: 40px;
+  color: #5a6275;
+  font-size: 13px;
+}
+
+.messages-list::-webkit-scrollbar { width: 4px; }
+.messages-list::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.1); border-radius: 2px; }
+
 @media (max-width: 768px) {
-  .sessions-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .session-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .session-actions-row {
-    flex-direction: column;
-  }
+  .sessions-grid { grid-template-columns: 1fr; }
+  .session-stats { grid-template-columns: repeat(2, 1fr); }
+  .session-actions-row { flex-direction: column; }
 }
 </style>

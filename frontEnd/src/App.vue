@@ -1,276 +1,249 @@
 <template>
   <div class="app">
+    <!-- Animated background particles -->
+    <div class="bg-particles">
+      <div v-for="i in 20" :key="i" class="particle" :style="particleStyle(i)"></div>
+    </div>
+    <div class="grid-overlay"></div>
+
     <div v-if="isLoggedIn" class="main-layout">
+      <!-- Sidebar -->
       <aside class="sidebar">
+        <div class="sidebar-glow"></div>
         <div class="sidebar-header">
           <div class="logo">
-            <span class="logo-icon">📊</span>
-            <span class="logo-text">综合能力评价系统</span>
+            <div class="logo-icon">
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                <rect x="2" y="2" width="28" height="28" rx="8" stroke="url(#logoGrad)" stroke-width="2" fill="rgba(0,229,255,0.05)"/>
+                <path d="M16 8L16 24M8 16L24 16" stroke="url(#logoGrad)" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="16" cy="16" r="4" fill="url(#logoGrad)" opacity="0.6"/>
+                <defs>
+                  <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+                    <stop offset="0%" stop-color="#00e5ff"/>
+                    <stop offset="100%" stop-color="#7c4dff"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <div class="logo-text">
+              <span class="logo-title">AI 智评</span>
+              <span class="logo-sub">综合能力评价系统</span>
+            </div>
           </div>
         </div>
-        
+
         <nav class="sidebar-nav">
-          <a href="#" :class="['nav-item', { active: currentPage === 'dashboard' }]" @click.prevent="currentPage = 'dashboard'">
-            <span class="nav-icon">🏠</span>
-            <span class="nav-text">仪表盘</span>
-          </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'sessions' }]" @click.prevent="currentPage = 'sessions'">
-            <span class="nav-icon">💬</span>
-            <span class="nav-text">会话管理</span>
-          </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'evaluations' }]" @click.prevent="currentPage = 'evaluations'">
-            <span class="nav-icon">📊</span>
-            <span class="nav-text">评分记录</span>
-          </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'professional-assessment' }]" @click.prevent="currentPage = 'professional-assessment'">
-            <span class="nav-icon">📝</span>
-            <span class="nav-text">专业测评</span>
-          </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'files' }]" @click.prevent="currentPage = 'files'">
-            <span class="nav-icon">📁</span>
-            <span class="nav-text">文件管理</span>
-          </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'chat' }]" @click.prevent="currentPage = 'chat'">
-            <span class="nav-icon">💬</span>
-            <span class="nav-text">AI对话</span>
-          </a>
-          <a href="#" :class="['nav-item', { active: currentPage === 'settings' }]" @click.prevent="currentPage = 'settings'">
-            <span class="nav-icon">⚙️</span>
-            <span class="nav-text">设置</span>
+          <a
+            v-for="item in navItems"
+            :key="item.id"
+            href="#"
+            :class="['nav-item', { active: currentPage === item.id }]"
+            @click.prevent="currentPage = item.id"
+          >
+            <span class="nav-icon" v-html="item.icon"></span>
+            <span class="nav-text">{{ item.label }}</span>
+            <span v-if="currentPage === item.id" class="nav-indicator"></span>
           </a>
         </nav>
-        
+
         <div class="sidebar-footer">
           <div class="user-info">
             <div class="user-avatar">{{ username.charAt(0).toUpperCase() }}</div>
             <div class="user-details">
               <div class="user-name">{{ username }}</div>
-              <div class="user-role">学生</div>
+              <div class="user-role">学员</div>
             </div>
+            <div class="user-status"></div>
           </div>
           <button @click="logout" class="logout-btn">
-            <span>退出登录</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            <span>退出</span>
           </button>
         </div>
       </aside>
-      
+
       <main class="main-content">
         <header class="top-header">
-          <div class="header-title">
-            <h1>{{ pageTitle }}</h1>
+          <div class="header-left">
+            <h1 class="page-title">{{ pageTitle }}</h1>
+            <div class="header-divider"></div>
+            <span class="page-subtitle">{{ pageSubtitle }}</span>
           </div>
-          <div class="header-actions">
-            <button class="action-btn">
-              <span>🔔</span>
-            </button>
-            <button class="action-btn">
-              <span>❓</span>
-            </button>
+          <div class="header-right">
+            <div class="header-time">{{ currentTime }}</div>
           </div>
         </header>
-        
+
         <div class="content-area">
+          <!-- Dashboard -->
           <div v-if="currentPage === 'dashboard'" class="dashboard-content">
             <div class="stats-grid">
-              <div class="stat-card">
-                <div class="stat-icon">📊</div>
+              <div v-for="stat in statsData" :key="stat.label" class="stat-card" :style="{ '--accent': stat.color }">
+                <div class="stat-icon" v-html="stat.icon"></div>
                 <div class="stat-info">
-                  <div class="stat-value">{{ latestEvaluation ? latestEvaluation.overall_score : '-' }}</div>
-                  <div class="stat-label">综合评分</div>
+                  <div class="stat-value">{{ stat.value }}</div>
+                  <div class="stat-label">{{ stat.label }}</div>
                 </div>
-              </div>
-              
-              <div class="stat-card">
-                <div class="stat-icon">🧠</div>
-                <div class="stat-info">
-                  <div class="stat-value" :class="latestEvaluation ? getScoreClass(latestEvaluation.logic_score) : ''">
-                    {{ latestEvaluation ? latestEvaluation.logic_score : '-' }}
-                  </div>
-                  <div class="stat-label">逻辑思维</div>
-                </div>
-              </div>
-              
-              <div class="stat-card">
-                <div class="stat-icon">💡</div>
-                <div class="stat-info">
-                  <div class="stat-value" :class="latestEvaluation ? getScoreClass(latestEvaluation.creativity_score) : ''">
-                    {{ latestEvaluation ? latestEvaluation.creativity_score : '-' }}
-                  </div>
-                  <div class="stat-label">创造力</div>
-                </div>
-              </div>
-              
-              <div class="stat-card">
-                <div class="stat-icon">📝</div>
-                <div class="stat-info">
-                  <div class="stat-value" :class="latestEvaluation ? getScoreClass(latestEvaluation.expression_score) : ''">
-                    {{ latestEvaluation ? latestEvaluation.expression_score : '-' }}
-                  </div>
-                  <div class="stat-label">表达能力</div>
-                </div>
+                <div class="stat-glow"></div>
               </div>
             </div>
-            
+
             <div class="content-grid">
               <div class="content-card">
-                <h3>能力评估</h3>
+                <div class="card-header">
+                  <h3>能力评估</h3>
+                  <div class="card-header-line"></div>
+                </div>
                 <div v-if="latestEvaluation" class="evaluation-details">
-                  <div class="evaluation-item">
-                    <span class="item-label">知识广度</span>
-                    <span class="item-score" :class="getScoreClass(latestEvaluation.knowledge_score)">
-                      {{ latestEvaluation.knowledge_score }}
-                    </span>
+                  <div class="evaluation-scores">
+                    <div v-for="(item, idx) in scoreItems" :key="idx" class="score-row">
+                      <span class="score-label">{{ item.label }}</span>
+                      <div class="score-bar-track">
+                        <div class="score-bar-fill" :style="{ width: item.score + '%', '--score-color': item.color }"></div>
+                      </div>
+                      <span class="score-value" :class="getScoreClass(item.score)">{{ item.score }}</span>
+                    </div>
                   </div>
-                  <div class="evaluation-item">
-                    <span class="item-label">反馈意见</span>
-                    <span class="item-feedback">{{ latestEvaluation.feedback }}</span>
+                  <div class="evaluation-feedback">
+                    <div class="feedback-label">反馈意见</div>
+                    <p>{{ latestEvaluation.feedback }}</p>
                   </div>
-                  <div class="evaluation-time">
-                    评分时间：{{ new Date(latestEvaluation.timestamp).toLocaleString('zh-CN') }}
-                  </div>
-                  <div class="evaluation-actions">
-                    <button @click="startEvaluation" class="reevaluate-btn" :disabled="isEvaluating">
-                      <span v-if="!isEvaluating">🔄 重新评估</span>
-                      <span v-else>⏳ 评估中...</span>
+                  <div class="evaluation-footer">
+                    <span class="evaluation-time">评分时间：{{ formatTime(latestEvaluation.timestamp) }}</span>
+                    <button @click="startEvaluation" class="btn-glow" :disabled="isEvaluating">
+                      <span v-if="!isEvaluating">重新评估</span>
+                      <span v-else>评估中...</span>
                     </button>
                   </div>
                 </div>
                 <div v-else class="no-evaluation">
-                  <div class="no-evaluation-icon">📊</div>
+                  <div class="no-eval-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3">
+                      <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+                    </svg>
+                  </div>
                   <p>暂无评分记录</p>
-                  <button @click="startEvaluation" class="evaluate-btn" :disabled="isEvaluating">
+                  <button @click="startEvaluation" class="btn-glow" :disabled="isEvaluating">
                     <span v-if="!isEvaluating">开始评估</span>
                     <span v-else>评估中...</span>
                   </button>
                 </div>
               </div>
-              
+
               <div class="content-card">
-                <h3>能力雷达图</h3>
-                <div v-if="latestEvaluation" class="radar-chart-wrapper">
+                <div class="card-header">
+                  <h3>能力雷达图</h3>
+                  <div class="card-header-line"></div>
+                </div>
+                <div v-if="latestEvaluation" class="radar-wrapper">
                   <RadarChart :evaluation="latestEvaluation" />
                 </div>
                 <div v-else class="chart-placeholder">
-                  <div class="chart-placeholder-text">暂无评分数据</div>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  </svg>
+                  <span>暂无评分数据</span>
                 </div>
               </div>
             </div>
           </div>
-          
-          <div v-else-if="currentPage === 'chat'" class="chat-content">
-            <Chat />
-          </div>
 
-          <div v-else-if="currentPage === 'sessions'" class="sessions-content">
-            <Sessions />
-          </div>
+          <!-- Chat -->
+          <div v-else-if="currentPage === 'chat'" class="page-view"><Chat /></div>
+          <div v-else-if="currentPage === 'sessions'" class="page-view"><Sessions /></div>
+          <div v-else-if="currentPage === 'history'" class="page-view"><History /></div>
 
-          <div v-else-if="currentPage === 'history'" class="history-content">
-            <History />
-          </div>
-          
-          <div v-else-if="currentPage === 'evaluations'" class="evaluations-content">
-            <Evaluations />
-          </div>
+          <!-- Evaluations -->
+          <div v-else-if="currentPage === 'evaluations'" class="page-view"><Evaluations /></div>
 
-          <div v-else-if="currentPage === 'professional-assessment'" class="professional-assessment-content">
-            <ProfessionalAssessment />
-          </div>
+          <!-- Professional Assessment -->
+          <div v-else-if="currentPage === 'professional-assessment'" class="page-view"><ProfessionalAssessment /></div>
 
-          <div v-else-if="currentPage === 'files'" class="files-content">
+          <!-- Files -->
+          <div v-else-if="currentPage === 'files'" class="page-view">
             <FileUpload @useForEvaluation="handleUseFileForEvaluation" />
-            <div v-if="fileIds.length > 0" class="file-ids-list">
-              <h4>当前评估文件列表</h4>
-              <div class="file-ids-content">
-                <span v-for="id in fileIds" :key="id" class="file-id-tag">
-                  文件 ID: {{ id }}
-                  <button @click="fileIds = fileIds.filter(fid => fid !== id)" class="remove-tag-btn">×</button>
+            <div v-if="fileIds.length > 0" class="file-ids-bar">
+              <div class="file-ids-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>当前评估文件</span>
+              </div>
+              <div class="file-ids-tags">
+                <span v-for="id in fileIds" :key="id" class="file-tag">
+                  文件 #{{ id }}
+                  <button @click="fileIds = fileIds.filter(fid => fid !== id)" class="tag-remove">&times;</button>
                 </span>
-                <button @click="clearFileIds" class="clear-btn">清空</button>
+                <button @click="clearFileIds" class="tag-clear">清空</button>
               </div>
             </div>
           </div>
-          
-          <div v-else-if="currentPage === 'settings'" class="settings-content">
+
+          <!-- Settings -->
+          <div v-else-if="currentPage === 'settings'" class="page-view">
             <div class="settings-container">
-              <div class="settings-card">
-                <h3>账户设置</h3>
-                
+              <div class="content-card">
+                <div class="card-header">
+                  <h3>账户设置</h3>
+                  <div class="card-header-line"></div>
+                </div>
+
                 <div class="setting-item">
                   <label>用户名</label>
-                  <div class="user-info-display">{{ username }}</div>
+                  <div class="setting-value">{{ username }}</div>
                 </div>
-                
+
                 <div class="setting-section">
                   <h4>修改密码</h4>
                   <form @submit.prevent="changePassword" class="password-form">
                     <div class="form-group">
                       <label for="currentPassword">当前密码</label>
-                      <input 
-                        type="password" 
-                        id="currentPassword" 
-                        v-model="passwordForm.currentPassword" 
-                        placeholder="请输入当前密码"
-                        required
-                      />
+                      <input type="password" id="currentPassword" v-model="passwordForm.currentPassword" placeholder="请输入当前密码" required />
                     </div>
                     <div class="form-group">
                       <label for="newPassword">新密码</label>
-                      <input 
-                        type="password" 
-                        id="newPassword" 
-                        v-model="passwordForm.newPassword" 
-                        placeholder="请输入新密码"
-                        required
-                        minlength="6"
-                      />
+                      <input type="password" id="newPassword" v-model="passwordForm.newPassword" placeholder="请输入新密码" required minlength="6" />
                     </div>
                     <div class="form-group">
                       <label for="confirmPassword">确认新密码</label>
-                      <input 
-                        type="password" 
-                        id="confirmPassword" 
-                        v-model="passwordForm.confirmPassword" 
-                        placeholder="请再次输入新密码"
-                        required
-                        minlength="6"
-                      />
+                      <input type="password" id="confirmPassword" v-model="passwordForm.confirmPassword" placeholder="请再次输入新密码" required minlength="6" />
                     </div>
-                    <button type="submit" class="btn-primary" :disabled="isChangingPassword">
+                    <button type="submit" class="btn-glow" :disabled="isChangingPassword">
                       <span v-if="!isChangingPassword">修改密码</span>
                       <span v-else>修改中...</span>
                     </button>
                   </form>
                 </div>
-                
-                <div class="setting-section danger-section">
+
+                <div class="setting-section danger-zone">
                   <h4>退出登录</h4>
-                  <p class="danger-text">退出登录后，您需要重新登录才能访问系统功能。</p>
+                  <p>退出登录后需要重新登录才能访问系统功能。</p>
                   <button @click="logout" class="btn-danger">退出登录</button>
                 </div>
               </div>
             </div>
           </div>
-          
+
           <div v-else class="placeholder-content">
-            <div class="placeholder-icon">🚧</div>
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+            </svg>
             <h2>{{ pageTitle }}</h2>
             <p>该功能正在开发中，敬请期待！</p>
           </div>
         </div>
       </main>
     </div>
-    
+
+    <!-- Auth -->
     <div v-else class="auth-container">
-      <Login 
-        v-if="currentView === 'login'" 
-        @switch-to-register="currentView = 'register'"
-        @login-success="handleLoginSuccess"
-      />
-      <Register 
-        v-else-if="currentView === 'register'" 
-        @switch-to-login="currentView = 'login'"
-      />
+      <div class="auth-bg-grid"></div>
+      <div class="auth-content">
+        <Login v-if="currentView === 'login'" @switch-to-register="currentView = 'register'" @login-success="handleLoginSuccess" />
+        <Register v-else-if="currentView === 'register'" @switch-to-login="currentView = 'login'" />
+      </div>
     </div>
   </div>
 </template>
@@ -289,46 +262,74 @@ import ProfessionalAssessmentNew from './components/ProfessionalAssessmentNew.vu
 export default {
   name: 'AppApp',
   components: {
-    Login,
-    Register,
-    Chat,
-    History,
-    Sessions,
-    Evaluations,
-    FileUpload,
-    RadarChart,
+    Login, Register, Chat, History, Sessions,
+    Evaluations, FileUpload, RadarChart,
     ProfessionalAssessment: ProfessionalAssessmentNew
   },
   data() {
     return {
       currentView: 'login',
       currentPage: 'dashboard',
-          isLoggedIn: false,
-          username: '',
-          latestEvaluation: null,
-          isEvaluating: false,
-          fileIds: [],
-          passwordForm: {
-            currentPassword: '',
-            newPassword: '',
-            confirmPassword: ''
-          },
-          isChangingPassword: false
+      isLoggedIn: false,
+      username: '',
+      latestEvaluation: null,
+      isEvaluating: false,
+      fileIds: [],
+      passwordForm: { currentPassword: '', newPassword: '', confirmPassword: '' },
+      isChangingPassword: false,
+      currentTime: '',
+      timerInterval: null,
+
+      navItems: [
+        { id: 'dashboard', label: '仪表盘', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
+        { id: 'sessions', label: '会话管理', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+        { id: 'evaluations', label: '评分记录', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
+        { id: 'professional-assessment', label: '专业测评', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
+        { id: 'files', label: '文件管理', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
+        { id: 'chat', label: 'AI对话', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' },
+        { id: 'settings', label: '设置', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' }
+      ]
     };
   },
   computed: {
     pageTitle() {
       const titles = {
-        dashboard: '仪表盘',
-        sessions: '会话管理',
-        history: '历史记录',
-        evaluations: '评分记录',
-        files: '文件管理',
-        chat: 'AI对话',
-        settings: '设置',
-        'professional-assessment': '专业测评'
+        dashboard: '仪表盘', sessions: '会话管理', history: '历史记录',
+        evaluations: '评分记录', files: '文件管理', chat: 'AI对话',
+        settings: '设置', 'professional-assessment': '专业测评'
       };
       return titles[this.currentPage] || '仪表盘';
+    },
+    pageSubtitle() {
+      const subs = {
+        dashboard: '总览您的学习与能力评估数据',
+        sessions: '管理您的对话会话',
+        evaluations: '查看所有能力评分记录',
+        chat: '与AI助手进行智能对话',
+        files: '上传和管理您的文档',
+        settings: '管理您的账户设置',
+        'professional-assessment': '进行专业能力测评'
+      };
+      return subs[this.currentPage] || '';
+    },
+    statsData() {
+      const e = this.latestEvaluation;
+      return [
+        { label: '综合评分', value: e ? e.overall_score : '-', color: '#00e5ff', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>' },
+        { label: '逻辑思维', value: e ? e.logic_score : '-', color: '#7c4dff', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>' },
+        { label: '创造力', value: e ? e.creativity_score : '-', color: '#00e676', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>' },
+        { label: '表达能力', value: e ? e.expression_score : '-', color: '#ffab00', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' }
+      ];
+    },
+    scoreItems() {
+      const e = this.latestEvaluation;
+      if (!e) return [];
+      return [
+        { label: '逻辑思维', score: e.logic_score, color: '#7c4dff' },
+        { label: '创造力', score: e.creativity_score, color: '#00e676' },
+        { label: '表达能力', score: e.expression_score, color: '#ffab00' },
+        { label: '知识广度', score: e.knowledge_score, color: '#448aff' }
+      ];
     }
   },
   mounted() {
@@ -339,8 +340,29 @@ export default {
       this.username = username;
       this.loadLatestEvaluation();
     }
+    this.updateTime();
+    this.timerInterval = setInterval(() => this.updateTime(), 1000);
+  },
+  beforeUnmount() {
+    clearInterval(this.timerInterval);
   },
   methods: {
+    updateTime() {
+      const now = new Date();
+      this.currentTime = now.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    },
+    particleStyle(i) {
+      const size = 2 + Math.random() * 4;
+      return {
+        width: size + 'px',
+        height: size + 'px',
+        left: Math.random() * 100 + '%',
+        top: Math.random() * 100 + '%',
+        animationDelay: Math.random() * 10 + 's',
+        animationDuration: 10 + Math.random() * 20 + 's',
+        opacity: 0.2 + Math.random() * 0.5
+      };
+    },
     handleLoginSuccess(data) {
       this.isLoggedIn = true;
       this.username = data.username;
@@ -357,122 +379,104 @@ export default {
     async loadLatestEvaluation() {
       const token = localStorage.getItem('token');
       if (!token) return;
-
       try {
-        const response = await fetch('http://localhost:5000/api/evaluation/latest', {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+        const res = await fetch('http://localhost:5000/api/evaluation/latest', {
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (response.ok) {
-          const data = await response.json();
-          this.latestEvaluation = data;
-        }
-      } catch (error) {
-        console.error('获取评分失败:', error);
-      }
+        if (res.ok) this.latestEvaluation = await res.json();
+      } catch (e) { console.error('获取评分失败:', e); }
     },
     async startEvaluation() {
       const token = localStorage.getItem('token');
       if (!token) return;
-
       this.isEvaluating = true;
       try {
-        const response = await fetch('http://localhost:5000/api/evaluate', {
+        const res = await fetch('http://localhost:5000/api/evaluate', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ file_ids: this.fileIds })
         });
-
-        if (response.ok) {
-          const data = await response.json();
-          this.latestEvaluation = data;
+        if (res.ok) {
+          this.latestEvaluation = await res.json();
           alert('评分完成！');
         } else {
-          const error = await response.json();
-          alert('评分失败：' + (error.error || '未知错误'));
+          const err = await res.json();
+          alert('评分失败：' + (err.error || '未知错误'));
         }
-      } catch (error) {
-        console.error('评分失败:', error);
+      } catch (e) {
+        console.error('评分失败:', e);
         alert('评分失败，请稍后重试');
-      } finally {
-        this.isEvaluating = false;
-      }
+      } finally { this.isEvaluating = false; }
     },
     handleUseFileForEvaluation(fileId) {
       if (!this.fileIds.includes(fileId)) {
         this.fileIds.push(fileId);
-        alert('文件已添加到评估列表，正在进行评估...');
-        this.startEvaluation();
-      } else {
-        alert('文件已在评估列表中，正在进行评估...');
-        this.startEvaluation();
       }
+      alert('文件已添加到评估列表，开始评估...');
+      this.startEvaluation();
     },
-    clearFileIds() {
-      this.fileIds = [];
-      alert('已清空评估文件列表');
-    },
+    clearFileIds() { this.fileIds = []; alert('已清空评估文件列表'); },
     async changePassword() {
       if (this.passwordForm.newPassword !== this.passwordForm.confirmPassword) {
-        alert('两次输入的新密码不一致');
-        return;
+        alert('两次输入的新密码不一致'); return;
       }
-
       this.isChangingPassword = true;
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:5000/api/change-password', {
+        const res = await fetch('http://localhost:5000/api/change-password', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            current_password: this.passwordForm.currentPassword,
-            new_password: this.passwordForm.newPassword
-          })
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ current_password: this.passwordForm.currentPassword, new_password: this.passwordForm.newPassword })
         });
-
-        if (response.ok) {
+        if (res.ok) {
           alert('密码修改成功！');
-          this.passwordForm = {
-            currentPassword: '',
-            newPassword: '',
-            confirmPassword: ''
-          };
+          this.passwordForm = { currentPassword: '', newPassword: '', confirmPassword: '' };
         } else {
-          const error = await response.json();
-          alert('密码修改失败：' + (error.error || '未知错误'));
+          const err = await res.json();
+          alert('密码修改失败：' + (err.error || '未知错误'));
         }
-      } catch (error) {
-        console.error('密码修改失败:', error);
-        alert('密码修改失败，请稍后重试');
-      } finally {
-        this.isChangingPassword = false;
-      }
+      } catch (e) { console.error('密码修改失败:', e); alert('密码修改失败，请稍后重试'); }
+      finally { this.isChangingPassword = false; }
     },
     getScoreClass(score) {
-      if (score >= 90) {
-        return 'excellent';
-      } else if (score >= 80) {
-        return 'good';
-      } else if (score >= 60) {
-        return 'average';
-      } else {
-        return 'poor';
-      }
+      if (score >= 90) return 'excellent';
+      if (score >= 80) return 'good';
+      if (score >= 60) return 'average';
+      return 'poor';
+    },
+    formatTime(ts) {
+      if (!ts) return '-';
+      return new Date(ts).toLocaleString('zh-CN');
     }
   }
 };
 </script>
 
 <style>
+/* ============ GLOBAL STYLES ============ */
+:root {
+  --bg-primary: #070b14;
+  --bg-secondary: #0d1421;
+  --bg-card: rgba(255,255,255,0.03);
+  --bg-card-hover: rgba(255,255,255,0.06);
+  --border-color: rgba(255,255,255,0.08);
+  --border-glow: rgba(0,229,255,0.2);
+  --text-primary: #e8eaed;
+  --text-secondary: #8892a4;
+  --text-muted: #5a6275;
+  --accent-cyan: #00e5ff;
+  --accent-purple: #7c4dff;
+  --accent-green: #00e676;
+  --accent-red: #ff1744;
+  --accent-orange: #ffab00;
+  --accent-blue: #448aff;
+  --glow-cyan: 0 0 20px rgba(0,229,255,0.12);
+  --glow-purple: 0 0 20px rgba(124,77,255,0.12);
+  --font-display: 'Orbitron', sans-serif;
+  --font-body: 'JetBrains Mono', monospace;
+  --sidebar-width: 260px;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -480,234 +484,364 @@ export default {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica', sans-serif;
-  line-height: 1.6;
-  color: #1a1a1a;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: var(--font-body);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .app {
   min-height: 100vh;
+  position: relative;
+  overflow: hidden;
 }
 
+/* Animated background */
+.bg-particles {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.particle {
+  position: absolute;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  animation: floatParticle linear infinite;
+}
+
+@keyframes floatParticle {
+  0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
+  10% { opacity: 0.4; }
+  90% { opacity: 0.4; }
+  100% { transform: translateY(-100vh) translateX(100px) scale(0); opacity: 0; }
+}
+
+.grid-overlay {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ============ AUTH CONTAINER ============ */
+.auth-container {
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+}
+
+.auth-content {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* ============ MAIN LAYOUT ============ */
 .main-layout {
   display: flex;
   min-height: 100vh;
-  background: #f0f2f5;
+  position: relative;
+  z-index: 1;
 }
 
+/* ============ SIDEBAR ============ */
 .sidebar {
-  width: 280px;
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  color: white;
-  display: flex;
-  flex-direction: column;
+  width: var(--sidebar-width);
   position: fixed;
   height: 100vh;
   left: 0;
   top: 0;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  background: rgba(13, 20, 33, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
   z-index: 100;
+  overflow: hidden;
+}
+
+.sidebar-glow {
+  position: absolute;
+  right: -1px;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(180deg, transparent, var(--accent-cyan), var(--accent-purple), transparent);
+  opacity: 0.5;
 }
 
 .sidebar-header {
-  padding: 28px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  padding: 24px 20px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  gap: 14px;
 }
 
 .logo-icon {
-  font-size: 32px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+  flex-shrink: 0;
 }
 
 .logo-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+.logo-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  letter-spacing: 2px;
+}
+
+.logo-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 1px;
+  margin-top: 2px;
 }
 
 .sidebar-nav {
   flex: 1;
-  padding: 24px 16px;
+  padding: 16px 12px;
   overflow-y: auto;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  color: #94a3b8;
+  gap: 12px;
+  padding: 12px 16px;
+  color: var(--text-secondary);
   text-decoration: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 12px;
-  margin-bottom: 8px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  font-size: 13px;
   font-weight: 500;
-  font-size: 15px;
+  transition: all 0.3s ease;
+  position: relative;
+  letter-spacing: 0.5px;
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  transform: translateX(4px);
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  background: rgba(0,229,255,0.08);
+  color: var(--accent-cyan);
+  box-shadow: inset 0 0 20px rgba(0,229,255,0.05);
 }
 
 .nav-icon {
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
 }
 
-.nav-text {
-  font: inherit;
+.nav-item.active .nav-icon {
+  filter: drop-shadow(0 0 6px rgba(0,229,255,0.5));
+}
+
+.nav-indicator {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: var(--accent-cyan);
+  border-radius: 3px 0 0 3px;
+  box-shadow: 0 0 10px rgba(0,229,255,0.5);
 }
 
 .sidebar-footer {
-  padding: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
 }
 
 .user-info {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 16px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  position: relative;
 }
 
 .user-avatar {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 18px;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  font-size: 14px;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(0,229,255,0.2);
 }
 
-.user-details {
-  flex: 1;
-}
+.user-details { flex: 1; }
 
 .user-name {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
-  margin-bottom: 4px;
-  color: white;
+  color: var(--text-primary);
 }
 
 .user-role {
-  font-size: 13px;
-  color: #94a3b8;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.user-status {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-green);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(0,230,118,0.5);
 }
 
 .logout-btn {
   width: 100%;
-  padding: 14px;
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 600;
+  padding: 10px;
+  background: rgba(255,23,68,0.08);
+  color: var(--accent-red);
+  border: 1px solid rgba(255,23,68,0.15);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  font-family: var(--font-body);
 }
 
 .logout-btn:hover {
-  background: rgba(239, 68, 68, 0.25);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  background: rgba(255,23,68,0.15);
+  box-shadow: 0 0 16px rgba(255,23,68,0.15);
 }
 
+/* ============ MAIN CONTENT ============ */
 .main-content {
   flex: 1;
-  margin-left: 280px;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.top-header {
+  padding: 20px 36px;
+  background: rgba(7,11,20,0.8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.header-left { display: flex; align-items: center; gap: 16px; }
+
+.page-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+}
+
+.header-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+}
+
+.page-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.header-right { display: flex; align-items: center; }
+
+.header-time {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: rgba(0,229,255,0.03);
+}
+
+/* ============ CONTENT AREA ============ */
+.content-area {
+  flex: 1;
+  padding: 32px 36px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.page-view {
+  height: 100%;
+  min-height: calc(100vh - 160px);
   display: flex;
   flex-direction: column;
 }
 
-.top-header {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  padding: 20px 40px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.header-title h1 {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1e293b;
-  letter-spacing: -0.5px;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.action-btn {
-  width: 44px;
-  height: 44px;
-  background: white;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 12px;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.action-btn:hover {
-  background: #f8fafc;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-.content-area {
+.page-view > * {
   flex: 1;
-  padding: 40px;
-  overflow-y: auto;
+  min-height: 0;
 }
 
+/* ============ DASHBOARD ============ */
 .dashboard-content {
   max-width: 1400px;
   margin: 0 auto;
@@ -715,51 +849,76 @@ body {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 24px;
-  margin-bottom: 40px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  margin-bottom: 32px;
 }
 
 .stat-card {
-  background: white;
-  padding: 28px;
-  border-radius: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 24px;
   display: flex;
   align-items: center;
   gap: 20px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.4s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .stat-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--accent-cyan);
   transform: translateY(-4px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--glow-cyan);
+}
+
+.stat-glow {
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, var(--accent), transparent 70%);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.stat-card:hover .stat-glow {
+  opacity: 0.1;
 }
 
 .stat-icon {
-  font-size: 40px;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(0,229,255,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
 }
 
-.stat-info {
-  flex: 1;
-}
+.stat-info { flex: 1; }
 
 .stat-value {
-  font-size: 32px;
-  font-weight: 800;
-  color: #1e293b;
-  margin-bottom: 6px;
-  letter-spacing: -1px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 2px;
 }
 
 .stat-label {
-  font-size: 15px;
-  color: #64748b;
-  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  letter-spacing: 0.5px;
 }
 
+/* ============ CONTENT CARDS ============ */
 .content-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
@@ -767,300 +926,194 @@ body {
 }
 
 .content-card {
-  background: white;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
   padding: 28px;
-  border-radius: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s ease;
 }
 
 .content-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  border-color: rgba(0,229,255,0.15);
+  box-shadow: 0 0 30px rgba(0,229,255,0.04);
 }
 
-.content-card h3 {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
-  letter-spacing: -0.5px;
+.card-header {
+  margin-bottom: 24px;
 }
 
-.activity-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.card-header h3 {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
-.activity-item {
+.card-header-line {
+  width: 40px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-cyan), transparent);
+  margin-top: 8px;
+  border-radius: 2px;
+}
+
+/* Score rows */
+.evaluation-scores { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
+
+.score-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px;
-  background: #f8fafc;
-  border-radius: 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  gap: 12px;
 }
 
-.activity-item:hover {
-  background: #f1f5f9;
-  transform: translateX(4px);
+.score-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 70px;
+  flex-shrink: 0;
 }
 
-.activity-icon {
-  font-size: 18px;
-}
-
-.activity-text {
+.score-bar-track {
   flex: 1;
-  font-size: 15px;
-  color: #334155;
-  font-weight: 500;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
 }
 
-.activity-time {
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--score-color, var(--accent-cyan));
+  transition: width 1s ease;
+  box-shadow: 0 0 8px var(--score-color, var(--accent-cyan));
+}
+
+.score-value {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  width: 40px;
+  text-align: right;
+}
+
+.evaluation-feedback {
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.feedback-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.evaluation-feedback p {
   font-size: 13px;
-  color: #94a3b8;
-  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.7;
 }
 
-.evaluation-details {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.evaluation-item {
+.evaluation-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-}
-
-.item-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-}
-
-.item-score {
-  font-size: 18px;
-  font-weight: 700;
-  padding: 4px 12px;
-  border-radius: 6px;
-}
-
-.item-score.excellent {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-}
-
-.item-score.good {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-}
-
-.item-score.average {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-}
-
-.item-score.poor {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.item-feedback {
-  font-size: 14px;
-  color: #64748b;
-  line-height: 1.6;
-  max-width: 70%;
 }
 
 .evaluation-time {
-  font-size: 13px;
-  color: #94a3b8;
-  font-weight: 500;
-  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .no-evaluation {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   padding: 40px 20px;
   text-align: center;
+  gap: 16px;
 }
 
-.no-evaluation-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+.no-eval-icon {
+  color: var(--text-muted);
 }
 
 .no-evaluation p {
-  font-size: 16px;
-  color: #64748b;
-  margin-bottom: 24px;
-  font-weight: 500;
+  font-size: 14px;
+  color: var(--text-muted);
 }
 
-.evaluate-btn {
-  padding: 12px 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
+.radar-wrapper {
+  width: 100%;
+  height: 340px;
+}
+
+.chart-placeholder {
+  height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+  border: 1px dashed var(--border-color);
   border-radius: 12px;
-  font-size: 16px;
-  font-weight: 700;
+}
+
+/* Buttons */
+.btn-glow {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,77,255,0.15));
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0,229,255,0.25);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
   letter-spacing: 0.5px;
 }
 
-.evaluate-btn:hover:not(:disabled) {
+.btn-glow:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(0,229,255,0.25), rgba(124,77,255,0.25));
+  box-shadow: var(--glow-cyan);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 
-.evaluate-btn:disabled {
-  opacity: 0.6;
+.btn-glow:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.evaluation-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 16px;
-}
-
-.reevaluate-btn {
+.btn-danger {
   padding: 10px 24px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-  letter-spacing: 0.3px;
-}
-
-.reevaluate-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
-}
-
-.reevaluate-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.file-ids-list {
-  margin-top: 24px;
-  padding: 20px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.file-ids-list h4 {
-  margin-bottom: 16px;
-  color: #1e293b;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.file-ids-content {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.file-id-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #e0f2fe;
-  color: #0284c7;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 500;
-  border: 1px solid #bae6fd;
-}
-
-.remove-tag-btn {
-  background: none;
-  border: none;
-  color: #0284c7;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  padding: 0;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
-}
-
-.remove-tag-btn:hover {
-  background: rgba(2, 132, 199, 0.1);
-}
-
-.clear-btn {
-  padding: 8px 16px;
-  background: #fef2f2;
-  color: #ef4444;
-  border: 1px solid #fee2e2;
+  background: rgba(255,23,68,0.12);
+  color: var(--accent-red);
+  border: 1px solid rgba(255,23,68,0.2);
   border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body);
   cursor: pointer;
-  transition: all 0.2s ease;
-  margin-left: auto;
+  transition: all 0.3s ease;
 }
 
-.clear-btn:hover {
-  background: #fee2e2;
+.btn-danger:hover {
+  background: rgba(255,23,68,0.2);
+  box-shadow: 0 0 16px rgba(255,23,68,0.15);
 }
 
-.settings-content {
-  padding: 24px;
-  background: #f8fafc;
-  min-height: 600px;
-}
-
+/* ============ SETTINGS ============ */
 .settings-container {
   max-width: 600px;
-}
-
-.settings-card {
-  background: white;
-  padding: 32px;
-  border-radius: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-.settings-card h3 {
-  margin-bottom: 24px;
-  color: #1e293b;
-  font-size: 1.5rem;
-  font-weight: 700;
 }
 
 .setting-item {
@@ -1069,269 +1122,211 @@ body {
 
 .setting-item label {
   display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
   margin-bottom: 8px;
-  color: #475569;
-  font-weight: 600;
-  font-size: 14px;
 }
 
-.user-info-display {
+.setting-value {
   padding: 12px 16px;
-  background: #f1f5f9;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  color: #1e293b;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 14px;
+  color: var(--text-primary);
 }
 
 .setting-section {
-  margin-top: 32px;
+  margin-top: 28px;
   padding-top: 24px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border-color);
 }
 
 .setting-section h4 {
-  margin-bottom: 16px;
-  color: #1e293b;
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  font-size: 13px;
   font-weight: 600;
-}
-
-.danger-section {
-  margin-top: 40px;
-  padding-top: 32px;
-  border-top: 2px solid #fee2e2;
-}
-
-.danger-section h4 {
-  color: #ef4444;
-}
-
-.danger-text {
-  color: #64748b;
-  font-size: 14px;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
   margin-bottom: 16px;
-  line-height: 1.6;
+}
+
+.danger-zone h4 { color: var(--accent-red); }
+.danger-zone p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
 }
 
 .password-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .form-group label {
-  color: #475569;
-  font-weight: 600;
-  font-size: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .form-group input {
   padding: 12px 16px;
-  border: 2px solid #e2e8f0;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  font-size: 15px;
-  transition: all 0.2s ease;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
   outline: none;
+  transition: all 0.3s ease;
 }
 
 .form-group input:focus {
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(0,229,255,0.08);
 }
 
-.btn-primary {
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 8px;
+.form-group input::placeholder {
+  color: var(--text-muted);
 }
 
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-danger {
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.btn-danger:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-}
-
-.files-content {
-  padding: 20px;
-  background: #f8fafc;
+/* File IDs bar */
+.file-ids-bar {
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  min-height: 600px;
 }
 
-.chart-placeholder {
-  height: 240px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 12px;
+.file-ids-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  border: 2px dashed #e2e8f0;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
 }
 
-.chart-placeholder-text {
-  color: #64748b;
+.file-ids-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.file-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0,229,255,0.08);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0,229,255,0.15);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: var(--accent-cyan);
+  cursor: pointer;
   font-size: 16px;
-  font-weight: 500;
+  line-height: 1;
+  opacity: 0.6;
 }
 
-.radar-chart-wrapper {
-  width: 50%;
-  margin: 0 auto;
-  height: 400px;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  background: white;
-  padding: 20px;
+.tag-remove:hover { opacity: 1; }
+
+.tag-clear {
+  padding: 6px 14px;
+  background: rgba(255,23,68,0.08);
+  color: var(--accent-red);
+  border: 1px solid rgba(255,23,68,0.15);
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 0.2s;
 }
 
-.chat-content {
-  height: calc(100vh - 80px);
-  padding: 0;
-}
-
-.history-content {
-  height: calc(100vh - 80px);
-  padding: 0;
-}
-
-.evaluations-content {
-  height: calc(100vh - 80px);
-  padding: 0;
+.tag-clear:hover {
+  background: rgba(255,23,68,0.15);
 }
 
 .placeholder-content {
-  text-align: center;
-  padding: 80px 20px;
-}
-
-.placeholder-icon {
-  font-size: 80px;
-  margin-bottom: 24px;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.1));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  gap: 16px;
+  color: var(--text-muted);
 }
 
 .placeholder-content h2 {
-  font-size: 32px;
-  font-weight: 800;
-  color: #1e293b;
-  margin-bottom: 12px;
-  letter-spacing: -1px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 1px;
 }
 
 .placeholder-content p {
-  font-size: 18px;
-  color: #64748b;
-  font-weight: 500;
+  font-size: 13px;
 }
 
-.auth-container {
-  min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
+/* Score colors */
+.score-value.excellent { color: var(--accent-green); }
+.score-value.good { color: var(--accent-cyan); }
+.score-value.average { color: var(--accent-orange); }
+.score-value.poor { color: var(--accent-red); }
 
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0,229,255,0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0,229,255,0.25); }
+
+.content-area::-webkit-scrollbar { width: 6px; }
+.content-area::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.12); border-radius: 3px; }
+
+/* ============ RESPONSIVE ============ */
 @media (max-width: 1024px) {
-  .sidebar {
-    width: 80px;
-  }
-  
-  .logo-text,
-  .nav-text,
-  .user-details {
-    display: none;
-  }
-  
-  .nav-item {
-    justify-content: center;
-    padding: 14px;
-  }
-  
-  .nav-item.active {
-    border-radius: 12px;
-  }
-  
-  .main-content {
-    margin-left: 80px;
-  }
-  
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
+  :root { --sidebar-width: 72px; }
+  .logo-text, .user-details, .nav-text, .user-status, .logout-btn span { display: none; }
+  .nav-item { justify-content: center; padding: 14px; }
+  .sidebar-footer { padding: 12px; }
+  .user-info { justify-content: center; padding: 8px; margin-bottom: 8px; }
+  .logout-btn { justify-content: center; padding: 10px; }
+  .header-divider, .page-subtitle { display: none; }
+  .content-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
-  .sidebar {
-    width: 0;
-    transform: translateX(-100%);
-  }
-  
-  .main-content {
-    margin-left: 0;
-  }
-  
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .top-header {
-    padding: 16px 24px;
-  }
-  
-  .content-area {
-    padding: 24px;
-  }
+  :root { --sidebar-width: 0; }
+  .sidebar { transform: translateX(-100%); width: 0; border: none; }
+  .main-content { margin-left: 0; }
+  .top-header { padding: 16px 20px; }
+  .content-area { padding: 20px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .page-title { font-size: 16px; }
 }
 
 @media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .top-header {
-    padding: 16px 20px;
-  }
-  
-  .content-area {
-    padding: 20px;
-  }
-  
-  .header-title h1 {
-    font-size: 20px;
-  }
+  .stats-grid { grid-template-columns: 1fr; }
+  .content-area { padding: 16px; }
 }
 </style>

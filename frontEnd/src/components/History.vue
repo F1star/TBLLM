@@ -2,38 +2,31 @@
   <div class="history-container">
     <div class="history-header">
       <div class="header-left">
-        <h2>📋 对话历史记录</h2>
-        <div v-if="currentSession" class="session-info">
-          <span class="session-name">{{ currentSession.name }}</span>
+        <h2>对话历史记录</h2>
+        <div class="session-info">
+          <span v-if="currentSession" class="session-name">{{ currentSession.name }}</span>
+          <span v-else class="no-session">未选择会话</span>
           <button @click="showSessionSelector = !showSessionSelector" class="session-select-btn">
-            <span>▼</span>
-          </button>
-        </div>
-        <div v-else class="session-info">
-          <span class="no-session">未选择会话</span>
-          <button @click="showSessionSelector = !showSessionSelector" class="session-select-btn">
-            <span>选择会话</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
         </div>
       </div>
       <div class="header-actions">
-        <button @click="loadHistory" class="refresh-btn">
-          <span>🔄</span>
-          <span>刷新</span>
+        <button @click="loadHistory" class="action-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
-        <button @click="clearHistory" class="clear-btn">
-          <span>🗑️</span>
-          <span>清空历史</span>
+        <button @click="clearHistory" class="action-btn danger">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
       </div>
     </div>
 
-    <!-- 会话选择器下拉菜单 -->
-    <div v-if="showSessionSelector" class="session-selector-overlay" @click="showSessionSelector = false"></div>
+    <!-- Session Selector -->
+    <div v-if="showSessionSelector" class="selector-overlay" @click="showSessionSelector = false"></div>
     <div v-if="showSessionSelector" class="session-selector">
       <div class="selector-header">
         <h3>选择会话</h3>
-        <button @click="showSessionSelector = false" class="close-selector">✕</button>
+        <button @click="showSessionSelector = false" class="close-btn">&times;</button>
       </div>
       <div v-if="sessionsLoading" class="loading-sessions">加载中...</div>
       <div v-else-if="sessions.length === 0" class="no-sessions">
@@ -48,94 +41,74 @@
           @click="selectSession(session)"
         >
           <div class="session-item-name">{{ session.name }}</div>
-          <div class="session-item-meta">{{ session.message_count }} 条消息 · {{ formatSessionDate(session.updated_at) }}</div>
+          <div class="session-item-meta">{{ session.message_count }} 条消息</div>
         </div>
       </div>
     </div>
 
     <div v-if="loading" class="loading-state">
-      <div class="loading-spinner"></div>
+      <div class="loader"></div>
       <p>加载中...</p>
     </div>
 
     <div v-else-if="history.length === 0" class="empty-state">
-      <div class="empty-icon">📭</div>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.2">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
       <p class="empty-title">暂无对话记录</p>
       <p class="empty-hint">开始与AI对话，记录将显示在这里</p>
     </div>
 
     <div v-else class="history-list">
-      <div v-for="(item, index) in groupedHistory" :key="item.date" class="history-group">
+      <div v-for="group in groupedHistory" :key="group.date" class="history-group">
         <div class="group-header">
-          <span class="group-date">{{ item.date }}</span>
-          <span class="group-count">{{ item.messages.length }} 条记录</span>
+          <span class="group-date">{{ group.date }}</span>
+          <span class="group-count">{{ group.messages.length }} 条记录</span>
         </div>
-        
-        <div v-for="msg in item.messages" :key="msg.id" class="history-item" @click="viewMessage(msg)">
-          <div class="message-avatar">
-            {{ msg.role === 'user' ? '👤' : '🤖' }}
+
+        <div v-for="msg in group.messages" :key="msg.id" class="history-item" @click="viewMessage(msg)">
+          <div class="msg-avatar">
+            <svg v-if="msg.role === 'assistant'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
-          <div class="message-content">
-            <div class="message-header">
-              <span class="message-role">{{ msg.role === 'user' ? '用户' : 'AI助手' }}</span>
-              <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
+          <div class="msg-content">
+            <div class="msg-header">
+              <span class="msg-role-label">{{ msg.role === 'user' ? '用户' : 'AI助手' }}</span>
+              <span class="msg-time">{{ formatTime(msg.timestamp) }}</span>
             </div>
-            <div class="message-text">{{ truncateText(msg.content, 100) }}</div>
+            <div class="msg-text">{{ truncateText(msg.content, 100) }}</div>
           </div>
-          <div class="message-actions">
-            <button @click.stop="evaluateMessage(msg)" class="evaluate-btn" :disabled="msg.evaluating">
-              <span v-if="!msg.evaluating">⭐</span>
-              <span v-else>⏳</span>
-              <span>{{ msg.evaluating ? '评估中...' : '评估' }}</span>
+          <div class="msg-actions">
+            <button @click.stop="evaluateMessage(msg)" class="eval-btn" :disabled="msg.evaluating">
+              {{ msg.evaluating ? '评估中' : '评估' }}
             </button>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="selectedMessage" class="message-modal" @click.self="closeModal">
-      <div class="modal-content">
+    <!-- Message Modal -->
+    <div v-if="selectedMessage" class="modal-overlay" @click.self="closeModal">
+      <div class="modal">
         <div class="modal-header">
           <h3>{{ selectedMessage.role === 'user' ? '用户消息' : 'AI回复' }}</h3>
-          <button @click="closeModal" class="close-btn">✕</button>
+          <button @click="closeModal" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
           <div class="full-message">{{ selectedMessage.content }}</div>
-          <div v-if="selectedMessage.evaluation" class="evaluation-section">
+          <div v-if="selectedMessage.evaluation" class="eval-section">
             <h4>评估结果</h4>
-            <div class="evaluation-grid">
-              <div class="evaluation-item">
-                <span class="evaluation-label">逻辑思维</span>
-                <span class="evaluation-score" :class="getScoreClass(selectedMessage.evaluation.logic_score)">
-                  {{ selectedMessage.evaluation.logic_score }}
-                </span>
-              </div>
-              <div class="evaluation-item">
-                <span class="evaluation-label">创造力</span>
-                <span class="evaluation-score" :class="getScoreClass(selectedMessage.evaluation.creativity_score)">
-                  {{ selectedMessage.evaluation.creativity_score }}
-                </span>
-              </div>
-              <div class="evaluation-item">
-                <span class="evaluation-label">表达能力</span>
-                <span class="evaluation-score" :class="getScoreClass(selectedMessage.evaluation.expression_score)">
-                  {{ selectedMessage.evaluation.expression_score }}
-                </span>
-              </div>
-              <div class="evaluation-item">
-                <span class="evaluation-label">知识广度</span>
-                <span class="evaluation-score" :class="getScoreClass(selectedMessage.evaluation.knowledge_score)">
-                  {{ selectedMessage.evaluation.knowledge_score }}
-                </span>
+            <div class="eval-grid">
+              <div v-for="item in evalItems(selectedMessage.evaluation)" :key="item.label" class="eval-item">
+                <span class="eval-label">{{ item.label }}</span>
+                <span class="eval-score" :class="getScoreClass(item.score)">{{ item.score }}</span>
               </div>
             </div>
-            <div class="overall-score">
-              <span class="overall-label">综合评分</span>
-              <span class="overall-value" :class="getScoreClass(selectedMessage.evaluation.overall_score)">
-                {{ selectedMessage.evaluation.overall_score }}
-              </span>
+            <div class="overall-row" :class="getScoreClass(selectedMessage.evaluation.overall_score)">
+              <span>综合评分</span>
+              <span class="overall-val">{{ selectedMessage.evaluation.overall_score }}</span>
             </div>
-            <div v-if="selectedMessage.evaluation.feedback" class="feedback-section">
+            <div v-if="selectedMessage.evaluation.feedback" class="feedback-block">
               <h4>反馈意见</h4>
               <p>{{ selectedMessage.evaluation.feedback }}</p>
             </div>
@@ -152,281 +125,137 @@ import { ref, computed, onMounted } from 'vue'
 const history = ref([])
 const loading = ref(false)
 const selectedMessage = ref(null)
-
-// 会话相关状态
 const currentSession = ref(null)
 const showSessionSelector = ref(false)
 const sessions = ref([])
 const sessionsLoading = ref(false)
 
-const API_URL = 'http://localhost:5000/api/chat/history'
-const CLEAR_API_URL = 'http://localhost:5000/api/chat/clear'
-const EVALUATE_API_URL = 'http://localhost:5000/api/evaluate'
-const SESSIONS_API_URL = 'http://localhost:5000/api/sessions'
+const getToken = () => localStorage.getItem('token')
 
-const getToken = () => {
-  return localStorage.getItem('token')
+const formatTime = (ts) => new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+
+const formatDate = (ts) => {
+  const d = new Date(ts), t = new Date(), y = new Date(t)
+  y.setDate(y.getDate() - 1)
+  if (d.toDateString() === t.toDateString()) return '今天'
+  if (d.toDateString() === y.toDateString()) return '昨天'
+  return d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
 }
 
-const formatTime = (timestamp) => {
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
-const formatDate = (timestamp) => {
-  const date = new Date(timestamp)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-
-  if (date.toDateString() === today.toDateString()) {
-    return '今天'
-  } else if (date.toDateString() === yesterday.toDateString()) {
-    return '昨天'
-  } else {
-    return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
-  }
-}
-
-const formatSessionDate = (dateString) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
-// 加载会话列表
-const loadSessions = async () => {
-  const token = getToken()
-  if (!token) return false
-
-  sessionsLoading.value = true
-  try {
-    const response = await fetch(SESSIONS_API_URL, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      sessions.value = data
-      return true
-    }
-    return false
-  } catch (error) {
-    console.error('加载会话失败:', error)
-    return false
-  } finally {
-    sessionsLoading.value = false
-  }
-}
-
-// 选择会话
-const selectSession = async (session) => {
-  currentSession.value = session
-  showSessionSelector.value = false
-  // 保存到localStorage
-  localStorage.setItem('current_session_id', session.id)
-  localStorage.setItem('current_session_name', session.name)
-  // 加载该会话的消息
-  await loadHistory()
-}
-
-// 创建新会话
-const createNewSession = async () => {
-  const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
-
-  const sessionName = prompt('请输入会话名称（可选）:') || ''
-
-  try {
-    const response = await fetch(SESSIONS_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ name: sessionName })
-    })
-
-    if (response.ok) {
-      const session = await response.json()
-      sessions.value.unshift(session)
-      await selectSession(session)
-      alert('会话创建成功！')
-    } else {
-      const error = await response.json()
-      alert('创建失败: ' + (error.error || '未知错误'))
-    }
-  } catch (error) {
-    console.error('创建会话失败:', error)
-    alert('创建失败，请稍后重试')
-  }
-}
-
-const truncateText = (text, maxLength) => {
-  if (!text) {
-    return ''
-  }
-  return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
-}
+const truncateText = (text, max) => !text ? '' : text.length > max ? text.substring(0, max) + '...' : text
 
 const getScoreClass = (score) => {
-  if (score >= 90) {
-    return 'excellent'
-  } else if (score >= 80) {
-    return 'good'
-  } else if (score >= 60) {
-    return 'average'
-  } else {
-    return 'poor'
-  }
+  if (score >= 90) return 'excellent'
+  if (score >= 80) return 'good'
+  if (score >= 60) return 'average'
+  return 'poor'
 }
+
+const evalItems = (e) => [
+  { label: '逻辑思维', score: e.logic_score },
+  { label: '创造力', score: e.creativity_score },
+  { label: '表达能力', score: e.expression_score },
+  { label: '知识广度', score: e.knowledge_score }
+]
 
 const groupedHistory = computed(() => {
   const groups = {}
-  history.value.forEach((item) => {
+  history.value.forEach(item => {
     const date = formatDate(item.timestamp)
-    if (!groups[date]) {
-      groups[date] = []
-    }
+    if (!groups[date]) groups[date] = []
     groups[date].push(item)
   })
-  
-  return Object.keys(groups).map((date) => ({
-    date,
-    messages: groups[date] || []
-  }))
+  return Object.keys(groups).map(date => ({ date, messages: groups[date] }))
 })
+
+const loadSessions = async () => {
+  const token = getToken()
+  if (!token) return false
+  sessionsLoading.value = true
+  try {
+    const res = await fetch('http://localhost:5000/api/sessions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (res.ok) { sessions.value = await res.json(); return true }
+    return false
+  } catch (e) { return false }
+  finally { sessionsLoading.value = false }
+}
+
+const selectSession = async (session) => {
+  currentSession.value = session
+  showSessionSelector.value = false
+  await loadHistory()
+}
+
+const createNewSession = async () => {
+  const token = getToken()
+  const name = prompt('请输入会话名称（可选）:') || ''
+  try {
+    const res = await fetch('http://localhost:5000/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name })
+    })
+    if (res.ok) {
+      const session = await res.json()
+      sessions.value.unshift(session)
+      await selectSession(session)
+    }
+  } catch (e) { alert('创建失败') }
+}
 
 const loadHistory = async () => {
   const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
-
+  if (!token) { alert('请先登录'); return }
   loading.value = true
   try {
-    let url = API_URL
-    if (currentSession.value) {
-      url += `?session_id=${currentSession.value.id}`
-    }
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error('获取历史记录失败')
-    }
-
-    const data = await response.json()
-    history.value = data
-  } catch (error) {
-    console.error('获取历史记录失败:', error)
-    alert('获取历史记录失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
+    let url = 'http://localhost:5000/api/chat/history'
+    if (currentSession.value) url += `?session_id=${currentSession.value.id}`
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+    if (!res.ok) throw new Error('获取失败')
+    history.value = await res.json()
+  } catch (e) { console.error(e); alert('获取历史记录失败') }
+  finally { loading.value = false }
 }
 
 const clearHistory = async () => {
-  // 确认清除
-  const sessionName = currentSession.value ? currentSession.value.name : '所有'
-  const confirmMessage = currentSession.value
-    ? `确定要清空会话 "${sessionName}" 的历史记录吗？`
-    : '确定要清空所有历史记录吗？'
-
-  if (!confirm(confirmMessage)) {
-    return
-  }
-
+  const name = currentSession.value ? currentSession.value.name : '所有'
+  if (!confirm(`确定要清空会话 "${name}" 的历史记录吗？`)) return
   const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
-
   try {
-    const requestBody = {}
-    if (currentSession.value) {
-      requestBody.session_id = currentSession.value.id
-    }
-
-    const response = await fetch(CLEAR_API_URL, {
+    const body = {}
+    if (currentSession.value) body.session_id = currentSession.value.id
+    const res = await fetch('http://localhost:5000/api/chat/clear', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     })
-
-    if (!response.ok) {
-      throw new Error('清空历史失败')
-    }
-
+    if (!res.ok) throw new Error('清除失败')
     history.value = []
-    alert(currentSession.value ? '会话历史已清空' : '所有历史记录已清空')
-  } catch (error) {
-    console.error('清空历史失败:', error)
-    alert('清空历史失败，请稍后重试')
-  }
+    alert('历史记录已清空')
+  } catch (e) { alert('清除失败') }
 }
 
-const viewMessage = (msg) => {
-  selectedMessage.value = msg
-}
-
-const closeModal = () => {
-  selectedMessage.value = null
-}
+const viewMessage = (msg) => { selectedMessage.value = msg }
+const closeModal = () => { selectedMessage.value = null }
 
 const evaluateMessage = async (msg) => {
   const token = getToken()
-  if (!token) {
-    alert('请先登录')
-    return
-  }
-
   msg.evaluating = true
-
   try {
-    const response = await fetch(EVALUATE_API_URL, {
+    const res = await fetch('http://localhost:5000/api/evaluate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: msg.id })
     })
-
-    if (!response.ok) {
-      throw new Error('评估失败')
-    }
-
-    const data = await response.json()
-    msg.evaluation = data
-    alert('评估完成！')
-  } catch (error) {
-    console.error('评估失败:', error)
-    alert('评分失败，请稍后重试')
-  } finally {
-    msg.evaluating = false
-  }
+    if (!res.ok) throw new Error('评估失败')
+    msg.evaluation = await res.json()
+  } catch (e) { alert('评估失败') }
+  finally { msg.evaluating = false }
 }
 
-onMounted(() => {
-  loadHistory()
-})
+onMounted(() => { loadHistory() })
 </script>
 
 <style scoped>
@@ -434,489 +263,255 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 0;
+  background: rgba(7,11,20,0.6);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .history-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 32px;
-  background: white;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 16px 24px;
+  background: rgba(13,20,33,0.6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
 }
+
+.header-left { display: flex; align-items: center; gap: 16px; }
 
 .history-header h2 {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
-  letter-spacing: -0.5px;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.refresh-btn, .clear-btn {
-  padding: 10px 20px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  cursor: pointer;
+  font-family: 'Orbitron', sans-serif;
   font-size: 14px;
   font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #e8eaed;
+  letter-spacing: 1px;
+}
+
+.session-info { display: flex; align-items: center; gap: 6px; }
+.session-name, .no-session { font-size: 11px; color: #5a6275; }
+.session-select-btn { background: none; border: none; color: #5a6275; cursor: pointer; display: flex; padding: 2px; }
+
+.header-actions { display: flex; gap: 8px; }
+
+.action-btn {
+  width: 34px; height: 34px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: #5a6275;
+  cursor: pointer;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  background: white;
-}
-
-.refresh-btn:hover, .clear-btn:hover {
-  background: #f8fafc;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.clear-btn {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: #ef4444;
-}
-
-.clear-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-}
-
-.loading-state {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 400px;
-  color: #64748b;
+  transition: all 0.3s;
 }
+.action-btn:hover { background: rgba(0,229,255,0.08); color: #00e5ff; }
+.action-btn.danger:hover { background: rgba(255,23,68,0.08); color: #ff1744; }
 
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(102, 126, 234, 0.2);
-  border-top-color: #667eea;
+/* Session Selector */
+.selector-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; }
+.session-selector {
+  position: absolute; top: 70px; left: 24px; width: 280px;
+  background: rgba(13,20,33,0.95);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,229,255,0.12);
+  border-radius: 12px;
+  z-index: 201;
+  max-height: 350px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.selector-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.selector-header h3 { font-family: 'Orbitron', sans-serif; font-size: 12px; color: #e8eaed; letter-spacing: 1px; }
+.close-btn { background: none; border: none; color: #5a6275; font-size: 20px; cursor: pointer; }
+.loading-sessions, .no-sessions { padding: 24px; text-align: center; color: #5a6275; font-size: 13px; }
+.create-session-btn { margin-top: 12px; padding: 8px 20px; background: rgba(0,229,255,0.1); color: #00e5ff; border: 1px solid rgba(0,229,255,0.2); border-radius: 6px; font-size: 12px; cursor: pointer; font-family: 'JetBrains Mono', monospace; }
+.sessions-list { overflow-y: auto; padding: 8px; }
+.session-item { padding: 12px 16px; border-radius: 8px; cursor: pointer; transition: all 0.2s; margin-bottom: 4px; }
+.session-item:hover { background: rgba(255,255,255,0.04); }
+.session-item.active { background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.12); }
+.session-item-name { font-size: 13px; color: #e8eaed; font-weight: 500; margin-bottom: 4px; }
+.session-item-meta { font-size: 11px; color: #5a6275; }
+
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; color: #5a6275; font-size: 13px; gap: 12px; }
+
+.loader {
+  width: 28px; height: 28px;
+  border: 2px solid rgba(0,229,255,0.1);
+  border-top-color: #00e5ff;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
+  animation: spin 0.8s linear infinite;
 }
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 400px;
-  color: #64748b;
-  text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 300px; text-align: center; gap: 12px;
 }
+.empty-title { font-size: 16px; font-weight: 600; color: #e8eaed; }
+.empty-hint { font-size: 13px; color: #5a6275; }
 
-.empty-icon {
-  font-size: 80px;
-  margin-bottom: 24px;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.1));
-}
+.history-list { flex: 1; overflow-y: auto; padding: 24px; }
 
-.empty-title {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: #1e293b;
-}
-
-.empty-hint {
-  font-size: 16px;
-  color: #64748b;
-}
-
-.history-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 32px;
-}
-
-.history-group {
-  margin-bottom: 32px;
-}
+.history-group { margin-bottom: 28px; }
 
 .group-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 12px;
-  margin-bottom: 16px;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  padding: 10px 16px;
+  background: rgba(0,229,255,0.05);
+  border: 1px solid rgba(0,229,255,0.08);
+  border-radius: 8px;
+  margin-bottom: 12px;
 }
-
-.group-date {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.group-count {
-  font-size: 14px;
-  font-weight: 600;
-  opacity: 0.9;
-}
+.group-date { font-family: 'Orbitron', sans-serif; font-size: 12px; color: #00e5ff; letter-spacing: 1px; }
+.group-count { font-size: 11px; color: #5a6275; }
 
 .history-item {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px;
-  background: white;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.history-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-}
-
-.message-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  flex-shrink: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.message-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.message-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
   margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.history-item:hover {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(0,229,255,0.1);
+  transform: translateX(4px);
 }
 
-.message-role {
-  font-size: 14px;
-  font-weight: 700;
-  color: #667eea;
-}
-
-.message-time {
-  font-size: 13px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.message-text {
-  font-size: 15px;
-  color: #334155;
-  line-height: 1.6;
-  font-weight: 500;
-}
-
-.message-actions {
+.msg-avatar {
+  width: 36px; height: 36px;
+  background: rgba(0,229,255,0.08);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: #00e5ff;
   flex-shrink: 0;
 }
 
-.evaluate-btn {
-  padding: 8px 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
+.msg-content { flex: 1; min-width: 0; }
+
+.msg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.msg-role-label { font-size: 12px; font-weight: 600; color: #00e5ff; }
+.msg-time { font-size: 11px; color: #5a6275; }
+.msg-text { font-size: 13px; color: #8892a4; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.msg-actions { flex-shrink: 0; }
+
+.eval-btn {
+  padding: 6px 14px;
+  background: rgba(0,229,255,0.08);
+  border: 1px solid rgba(0,229,255,0.15);
+  border-radius: 6px;
+  color: #00e5ff;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s;
+}
+.eval-btn:hover:not(:disabled) { background: rgba(0,229,255,0.15); }
+.eval-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 20px;
 }
 
-.evaluate-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.evaluate-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.message-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 20px;
-  max-width: 700px;
+.modal {
+  background: rgba(13,20,33,0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,229,255,0.1);
+  border-radius: 16px;
+  max-width: 640px;
   width: 100%;
-  max-height: 90vh;
+  max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
 
 .modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 24px 28px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
+.modal-header h3 { font-family: 'Orbitron', sans-serif; font-size: 13px; color: #e8eaed; letter-spacing: 0.5px; }
 
-.modal-header h3 {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
-}
-
-.close-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: #f8fafc;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 18px;
-  transition: all 0.3s;
-}
-
-.close-btn:hover {
-  background: #e2e8f0;
-  transform: rotate(90deg);
-}
-
-.modal-body {
-  padding: 28px;
-}
+.modal-body { padding: 24px; }
 
 .full-message {
-  padding: 20px;
-  background: #f8fafc;
-  border-radius: 12px;
-  font-size: 16px;
-  line-height: 1.8;
-  color: #1e293b;
-  margin-bottom: 24px;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.evaluation-section {
-  margin-top: 24px;
-}
-
-.evaluation-section h4 {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 16px;
-}
-
-.evaluation-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.evaluation-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
-  border: 2px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  font-size: 13px; line-height: 1.8; color: #e8eaed;
+  white-space: pre-wrap; word-wrap: break-word;
+  margin-bottom: 24px;
 }
 
-.evaluation-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-}
+.eval-section h4 { font-family: 'Orbitron', sans-serif; font-size: 12px; color: #e8eaed; letter-spacing: 0.5px; margin-bottom: 12px; }
 
-.evaluation-score {
-  font-size: 24px;
-  font-weight: 800;
-  padding: 8px 16px;
+.eval-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+
+.eval-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
   border-radius: 8px;
 }
+.eval-label { font-size: 12px; color: #5a6275; }
+.eval-score { font-family: 'Orbitron', sans-serif; font-size: 18px; font-weight: 700; }
+.eval-score.excellent { color: #00e676; }
+.eval-score.good { color: #00e5ff; }
+.eval-score.average { color: #ffab00; }
+.eval-score.poor { color: #ff1744; }
 
-.evaluation-score.excellent {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+.overall-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(0,229,255,0.1), rgba(124,77,255,0.1));
+  border: 1px solid rgba(0,229,255,0.15);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  font-size: 14px; font-weight: 600; color: #e8eaed;
+}
+.overall-val { font-family: 'Orbitron', sans-serif; font-size: 24px; font-weight: 700; color: #00e5ff; }
+
+.feedback-block h4 { font-size: 12px; color: #e8eaed; margin-bottom: 8px; }
+.feedback-block p {
+  font-size: 13px; line-height: 1.7; color: #8892a4;
+  padding: 14px;
+  background: rgba(255,255,255,0.02);
+  border-left: 2px solid rgba(0,229,255,0.3);
+  border-radius: 0 8px 8px 0;
 }
 
-.evaluation-score.good {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-}
-
-.evaluation-score.average {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-}
-
-.evaluation-score.poor {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.overall-score {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  margin-bottom: 24px;
-  color: white;
-}
-
-.overall-label {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.overall-value {
-  font-size: 32px;
-  font-weight: 800;
-  padding: 8px 20px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-}
-
-.feedback-section h4 {
-  font-size: 16px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 12px;
-}
-
-.feedback-section p {
-  font-size: 15px;
-  line-height: 1.8;
-  color: #64748b;
-  background: #f8fafc;
-  padding: 16px;
-  border-radius: 12px;
-  border-left: 4px solid #667eea;
-}
-
-.history-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.history-list::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 4px;
-}
-
-.history-list::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-  border-radius: 4px;
-}
+.history-list::-webkit-scrollbar { width: 4px; }
+.history-list::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.1); border-radius: 2px; }
 
 @media (max-width: 768px) {
-  .history-header {
-    padding: 20px 24px;
-  }
-  
-  .history-header h2 {
-    font-size: 20px;
-  }
-  
-  .history-list {
-    padding: 20px 24px;
-  }
-  
-  .evaluation-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .modal-content {
-    max-height: 95vh;
-  }
+  .history-header { padding: 14px 18px; }
+  .history-list { padding: 18px; }
+  .eval-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
-  .history-header {
-    padding: 16px 20px;
-    flex-direction: column;
-    gap: 16px;
-  }
-  
-  .history-header h2 {
-    font-size: 18px;
-  }
-  
-  .history-list {
-    padding: 16px 20px;
-  }
-  
-  .history-item {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .message-avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
-  }
-  
-  .message-content {
-    width: 100%;
-  }
-  
-  .message-actions {
-    width: 100%;
-    margin-top: 12px;
-  }
-  
-  .evaluate-btn {
-    width: 100%;
-    justify-content: center;
-  }
+  .history-item { flex-direction: column; align-items: flex-start; }
+  .msg-actions { width: 100%; }
+  .eval-btn { width: 100%; text-align: center; }
 }
 </style>
