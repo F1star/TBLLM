@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -8,8 +9,56 @@ from utils.environment import setup_environment
 from config.settings import app, db
 from routes import register_routes
 from sqlalchemy import inspect, text
+from config.constants import LOG_LEVEL, ENABLE_DETAILED_LOGGING
 
 setup_environment()
+
+# 配置详细日志
+def setup_logging():
+    """配置应用程序日志，启用详细日志输出"""
+    # 解析日志级别
+    log_level = getattr(logging, LOG_LEVEL.upper()) if hasattr(logging, LOG_LEVEL.upper()) else logging.DEBUG
+
+    # 设置根日志级别
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+
+    # 如果已有处理程序，移除它们（避免重复）
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # 创建控制台处理程序
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+
+    # 设置日志格式
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+
+    # 添加处理程序
+    root_logger.addHandler(console_handler)
+
+    # 如果启用详细日志，特别为Agent和RAG模块设置DEBUG级别
+    if ENABLE_DETAILED_LOGGING:
+        logging.getLogger('services.advanced_agent').setLevel(logging.DEBUG)
+        logging.getLogger('services.rag_service').setLevel(logging.DEBUG)
+        logging.getLogger('services.vector_store').setLevel(logging.DEBUG)
+        logging.getLogger('services.agent_tools_enhanced').setLevel(logging.DEBUG)
+
+        # 降低transformers等库的日志级别，避免过多输出
+        logging.getLogger('transformers').setLevel(logging.WARNING)
+        logging.getLogger('langchain').setLevel(logging.WARNING)
+        logging.getLogger('chromadb').setLevel(logging.WARNING)
+
+        logging.info(f"详细日志已启用，级别：{LOG_LEVEL}（Agent和RAG模块：DEBUG）")
+    else:
+        logging.info(f"标准日志已启用，级别：{LOG_LEVEL}")
+
+# 初始化日志
+setup_logging()
 
 def migrate_database():
     """迁移数据库，添加新列"""

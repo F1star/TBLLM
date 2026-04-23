@@ -2,9 +2,16 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MODEL_PATH = os.path.join(
+# 原始模型路径
+ORIGINAL_MODEL_PATH = os.path.join(
     os.path.dirname(BASE_DIR),
     'models', 'Qwen1.5-1.8B-Chat'
+)
+
+# 微调模型路径
+FINETUNED_MODEL_PATH = os.path.join(
+    os.path.dirname(BASE_DIR),
+    'lora_weights'
 )
 
 MAX_CONTEXT_CHARS = 8000
@@ -42,7 +49,7 @@ EVALUATION_PROMPT_TEMPLATE = """
 # =============================================================================
 
 # AdvancedAgent 配置
-USE_ADVANCED_AGENT = False  # 是否使用AdvancedAgent（True：使用，False：使用原版AgentService）
+USE_ADVANCED_AGENT = True  # 是否使用AdvancedAgent（True：使用，False：使用原版AgentService）
 
 # 向量存储配置
 VECTOR_STORE_PATH = os.path.join(BASE_DIR, "vector_store")
@@ -57,4 +64,8 @@ RAG_CHUNK_OVERLAP = 50  # 文本分块重叠大小
 
 # Agent 配置
 AGENT_MAX_ITERATIONS = 5  # Agent最大迭代次数（工具调用次数）
-AGENT_VERBOSE = False  # 是否输出详细日志
+AGENT_VERBOSE = True  # 是否输出详细日志
+
+# 日志配置
+ENABLE_DETAILED_LOGGING = True  # 是否启用详细日志（DEBUG级别）
+LOG_LEVEL = "DEBUG" if ENABLE_DETAILED_LOGGING else "INFO"

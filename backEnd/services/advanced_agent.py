@@ -220,7 +220,7 @@ class AdvancedAgent:
             # 使用LLM直接生成评估结果（简化实现）
             response = self.llm.invoke(
                 evaluation_prompt,
-                max_new_tokens=512,
+                max_new_tokens=1024,
                 temperature=0.2
             ).strip()
 
@@ -229,6 +229,13 @@ class AdvancedAgent:
             if result is None:
                 logger.error(f"评估结果解析失败: {response[:200]}")
                 raise ValueError(f"评估结果解析失败: {response[:200]}")
+
+            # 确保所有分数字段不为None
+            score_keys = ['logic_score', 'creativity_score', 'expression_score', 'knowledge_score', 'overall_score']
+            for key in score_keys:
+                if result.get(key) is None:
+                    logger.warning(f"评估结果中 {key} 为null，已设为0")
+                    result[key] = 0
 
             return result
 
@@ -356,3 +363,16 @@ class CompatibleAgentService:
     def evaluate(self, chat_history: str, file_context: str) -> dict:
         """兼容evaluate方法"""
         return self.advanced_agent.evaluate(chat_history, file_context)
+
+    def professional_assess(self, assessment_text: str, cohort: str) -> dict:
+        """兼容professional_assess方法 - 直接使用原始的AgentService"""
+        # 创建原始的AgentService来处理专业测评
+        from services.agent_service import AgentService
+        from services.local_llm import LocalChatLLM
+        llm = self.advanced_agent.llm
+        raw_agent = AgentService(
+            tokenizer=llm.tokenizer if hasattr(llm, 'tokenizer') else None,
+            model=llm.model if hasattr(llm, 'model') else None,
+            max_new_tokens=llm.max_new_tokens if hasattr(llm, 'max_new_tokens') else 1024,
+        )
+        return raw_agent.professional_assess(assessment_text, cohort)

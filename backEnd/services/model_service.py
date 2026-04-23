@@ -2,11 +2,27 @@ import threading
 import logging
 from datetime import datetime
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+# 尝试导入torch，如果失败则设置为None
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except Exception as e:
+    print(f"[Warning] 无法导入torch: {e}")
+    torch = None
+    TORCH_AVAILABLE = False
+
+# 尝试导入transformers，如果失败则设置为None
+try:
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    TRANSFORMERS_AVAILABLE = True
+except Exception as e:
+    print(f"[Warning] 无法导入transformers: {e}")
+    AutoModelForCausalLM = None
+    AutoTokenizer = None
+    TRANSFORMERS_AVAILABLE = False
 
 from config.constants import (
-    MAX_CONTEXT_CHARS, MAX_NEW_TOKENS, MODEL_PATH,
+    MAX_CONTEXT_CHARS, MAX_NEW_TOKENS, ORIGINAL_MODEL_PATH, FINETUNED_MODEL_PATH,
     USE_ADVANCED_AGENT, AGENT_MAX_ITERATIONS, AGENT_VERBOSE
 )
 from services.agent_service import AgentService
@@ -47,29 +63,65 @@ class ModelService:
             self._load_model()
 
     def _load_model(self):
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 加载本地模型从: {MODEL_PATH}")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 加载本地模型从: {ORIGINAL_MODEL_PATH}")
+
+        # 检查必要的库是否可用
+        if not TORCH_AVAILABLE or not TRANSFORMERS_AVAILABLE:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] torch或transformers不可用，跳过模型加载")
+            self.model = None
+            self.tokenizer = None
+            return
 
         try:
+            # 先尝试使用CPU加载，避免内存不足问题
             use_cuda = torch.cuda.is_available()
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] CUDA 可用: {use_cuda}")
+
+            # 优先使用CPU以避免内存问题
+            force_cpu = False  # 不强制使用CPU，尝试使用CUDA
+            if use_cuda and not force_cpu:
+                device = "cuda"
+                dtype = torch.float16
+                device_map = "auto"
+            else:
+                device = "cpu"
+                dtype = torch.float32
+                device_map = "cpu"
+
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 使用设备: {device}, 精度: {dtype}")
+
+            from peft import PeftModel
+
+            # 1️⃣ 加载 tokenizer（始终用 base model 的）
             self.tokenizer = AutoTokenizer.from_pretrained(
-                MODEL_PATH,
+                ORIGINAL_MODEL_PATH,
                 trust_remote_code=True,
             )
 
-            model_kwargs = {
-                "trust_remote_code": True,
-                "low_cpu_mem_usage": True,
-            }
-            if use_cuda:
-                model_kwargs.update({"torch_dtype": torch.float16, "device_map": "auto"})
-            else:
-                model_kwargs.update({"torch_dtype": torch.float32, "device_map": "cpu"})
+            # 2️⃣ 加载 base model
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 加载基础模型...")
 
-            self.model = AutoModelForCausalLM.from_pretrained(MODEL_PATH, **model_kwargs)
+            base_model = AutoModelForCausalLM.from_pretrained(
+                ORIGINAL_MODEL_PATH,
+                dtype=torch.float16 if device == "cuda" else torch.float32,
+                device_map="auto",
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
+
+            # 3️⃣ 如果有 LoRA，就加载
+            if FINETUNED_MODEL_PATH:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 加载LoRA权重: {FINETUNED_MODEL_PATH}")
+                self.model = PeftModel.from_pretrained(base_model, FINETUNED_MODEL_PATH)
+            else:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 未使用LoRA，直接使用基础模型")
+                self.model = base_model
+
+            # 4️⃣ 设置推理模式
             self.model.eval()
             self.model.config.use_cache = True
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型加载成功，设备: {self.model.device}")
+
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型加载完成")        
 
             # 根据配置选择Agent服务
             if USE_ADVANCED_AGENT and ADVANCED_AGENT_AVAILABLE:
@@ -174,6 +226,27 @@ class ModelService:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 评估过程异常: {str(e)}")
                 raise
 
+    def generate_professional_assessment(self, assessment_text, cohort):
+        """生成专业测评评估"""
+        if self.model is None or self.tokenizer is None or self.agent_service is None:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型未加载，无法生成专业测评评估")
+            raise ValueError("模型未正确加载，请检查后端日志。")
+
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成专业测评评估 - 评估文本长度: {len(assessment_text)}, 组别: {cohort}")
+        with self.generate_lock:
+            try:
+                result = self.agent_service.professional_assess(
+                    assessment_text=assessment_text,
+                    cohort=cohort,
+                )
+                skill_scores = result.get('skill_scores', {})
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 专业测评完成 - 技能数: {len(skill_scores)}, 综合: {result.get('overall_score')}")
+                return result
+            except Exception as e:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 专业测评过程异常: {str(e)}")
+                raise
+
+
     def is_busy(self):
         return self.generate_lock.locked()
 
@@ -200,3 +273,72 @@ class ModelService:
         return "\n".join(
             f"{chat.role}: {chat.content[:MAX_CONTEXT_CHARS]}" for chat in ordered_chats
         )
+
+    def optimize_question_text(self, question_text):
+        """
+        优化问题描述
+
+        参数:
+            question_text: 原始问题文本
+
+        返回:
+            optimized_text: 优化后的问题文本
+        """
+        # 如果模型不可用，返回模拟优化文本
+        if self.model is None or self.tokenizer is None:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型不可用，返回模拟优化文本")
+            return f"[模拟优化] {question_text} (此优化文本为模拟数据，实际使用时需要加载模型)"
+
+        try:
+            prompt = f"""请优化以下问卷问题的描述，使其更加清晰、易懂，适合中学生理解：
+
+原始问题: {question_text}
+
+优化要求:
+1. 保持问题的原意不变
+2. 使语言更加简洁明了
+3. 适合中学生的理解水平
+4. 如果问题中有专业术语，用更通俗的语言解释
+5. 优化后的长度不应显著增加
+
+请只返回优化后的问题文本，不要添加其他内容。"""
+
+            with self.generate_lock:
+                inputs = self.tokenizer(prompt, return_tensors="pt")
+                if self.model.device.type == "cuda":
+                    inputs = inputs.to("cuda")
+
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=MAX_NEW_TOKENS,
+                        do_sample=True,
+                        temperature=0.7,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                    )
+
+                response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+                # 提取优化后的问题文本
+                # 移除prompt部分，只保留生成的文本
+                if prompt in response:
+                    optimized_text = response.replace(prompt, "").strip()
+                else:
+                    # 如果prompt不在response中，尝试找到问题部分
+                    lines = response.split('\n')
+                    for i, line in enumerate(lines):
+                        if "优化后的问题" in line or "优化版本" in line:
+                            if i + 1 < len(lines):
+                                optimized_text = lines[i + 1].strip()
+                                break
+                    else:
+                        # 如果找不到，使用最后一行
+                        optimized_text = lines[-1].strip() if lines else question_text
+
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 问题优化完成: {question_text[:50]}... -> {optimized_text[:50]}...")
+                return optimized_text
+
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 优化问题时出错: {e}")
+            # 如果优化失败，返回原始文本
+            return question_text

@@ -22,6 +22,10 @@
             <span class="nav-icon">📊</span>
             <span class="nav-text">评分记录</span>
           </a>
+          <a href="#" :class="['nav-item', { active: currentPage === 'professional-assessment' }]" @click.prevent="currentPage = 'professional-assessment'">
+            <span class="nav-icon">📝</span>
+            <span class="nav-text">专业测评</span>
+          </a>
           <a href="#" :class="['nav-item', { active: currentPage === 'files' }]" @click.prevent="currentPage = 'files'">
             <span class="nav-icon">📁</span>
             <span class="nav-text">文件管理</span>
@@ -168,7 +172,11 @@
           <div v-else-if="currentPage === 'evaluations'" class="evaluations-content">
             <Evaluations />
           </div>
-          
+
+          <div v-else-if="currentPage === 'professional-assessment'" class="professional-assessment-content">
+            <ProfessionalAssessment />
+          </div>
+
           <div v-else-if="currentPage === 'files'" class="files-content">
             <FileUpload @useForEvaluation="handleUseFileForEvaluation" />
             <div v-if="fileIds.length > 0" class="file-ids-list">
@@ -276,6 +284,7 @@ import Sessions from './components/Sessions.vue';
 import Evaluations from './components/Evaluations.vue';
 import FileUpload from './components/FileUpload.vue';
 import RadarChart from './components/RadarChart.vue';
+import ProfessionalAssessmentNew from './components/ProfessionalAssessmentNew.vue';
 
 export default {
   name: 'AppApp',
@@ -287,7 +296,8 @@ export default {
     Sessions,
     Evaluations,
     FileUpload,
-    RadarChart
+    RadarChart,
+    ProfessionalAssessment: ProfessionalAssessmentNew
   },
   data() {
     return {
@@ -315,7 +325,8 @@ export default {
         evaluations: '评分记录',
         files: '文件管理',
         chat: 'AI对话',
-        settings: '设置'
+        settings: '设置',
+        'professional-assessment': '专业测评'
       };
       return titles[this.currentPage] || '仪表盘';
     }

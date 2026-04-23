@@ -4,6 +4,11 @@ from .evaluation_routes import evaluate_user_overall, get_latest_evaluation, get
 from .file_routes import upload_file, get_user_files, get_file_content, download_file, delete_file
 from .session_routes import (get_sessions, create_session, update_session,
                            delete_session, get_session_messages, get_session_stats)
+from .professional_assessment_routes import (get_available_cohorts, create_session as create_assessment_session,
+                                           get_user_sessions, get_session, get_session_questions,
+                                           submit_response, evaluate_session, delete_session as delete_assessment_session,
+                                           get_all_questions, optimize_question, submit_assessment,
+                                           get_remembered_answers, complete_session)
 
 def register_routes(app):
     app.add_url_rule('/api/register', 'register', register, methods=['POST'])
@@ -28,5 +33,20 @@ def register_routes(app):
     app.add_url_rule('/api/sessions/<int:session_id>', 'delete_session', delete_session, methods=['DELETE'])
     app.add_url_rule('/api/sessions/<int:session_id>/messages', 'get_session_messages', get_session_messages, methods=['GET'])
     app.add_url_rule('/api/sessions/<int:session_id>/stats', 'get_session_stats', get_session_stats, methods=['GET'])
+
+    # 专业测评API
+    app.add_url_rule('/api/professional-assessment/cohorts', 'get_available_cohorts', get_available_cohorts, methods=['GET'])
+    app.add_url_rule('/api/professional-assessment/sessions', 'create_assessment_session', create_assessment_session, methods=['POST'])
+    app.add_url_rule('/api/professional-assessment/sessions', 'get_user_sessions', get_user_sessions, methods=['GET'])
+    app.add_url_rule('/api/professional-assessment/sessions/<int:session_id>', 'get_session', get_session, methods=['GET'])
+    app.add_url_rule('/api/professional-assessment/sessions/<int:session_id>', 'delete_assessment_session', delete_assessment_session, methods=['DELETE'])
+    app.add_url_rule('/api/professional-assessment/sessions/<int:session_id>/questions', 'get_session_questions', get_session_questions, methods=['GET'])
+    app.add_url_rule('/api/professional-assessment/sessions/<int:session_id>/responses', 'submit_response', submit_response, methods=['POST'])
+    app.add_url_rule('/api/professional-assessment/sessions/<int:session_id>/evaluate', 'evaluate_session', evaluate_session, methods=['POST'])
+    app.add_url_rule('/api/professional-assessment/questions', 'get_all_questions', get_all_questions, methods=['GET'])
+    app.add_url_rule('/api/professional-assessment/sessions/<int:session_id>/complete', 'complete_session', complete_session, methods=['POST'])
+    app.add_url_rule('/api/professional-assessment/remembered-answers/<cohort>', 'get_remembered_answers', get_remembered_answers, methods=['GET'])
+    app.add_url_rule('/api/professional-assessment/optimize-question', 'optimize_question', optimize_question, methods=['POST'])
+    app.add_url_rule('/api/professional-assessment/submit', 'submit_assessment', submit_assessment, methods=['POST'])
 
 __all__ = ['register_routes']

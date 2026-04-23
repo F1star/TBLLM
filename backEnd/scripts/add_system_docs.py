@@ -14,8 +14,13 @@ import sys
 import logging
 from pathlib import Path
 
-# 添加当前目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 项目根目录
+SCRIPT_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = SCRIPT_DIR.parent  # backEnd/
+PROJECT_ROOT = BACKEND_DIR.parent  # 项目根目录
+
+# 添加backEnd目录到Python路径
+sys.path.insert(0, str(BACKEND_DIR))
 
 # 配置日志
 logging.basicConfig(
@@ -28,7 +33,7 @@ def add_system_documents():
     """添加系统文档到向量存储"""
 
     # 基础路径
-    base_dir = Path(__file__).parent.parent  # TBLLM目录
+    base_dir = PROJECT_ROOT  # 项目根目录
     data_dir = base_dir / "data"
 
     if not data_dir.exists():
