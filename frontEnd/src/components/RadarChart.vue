@@ -67,7 +67,7 @@ export default {
               pointLabels: {
                 color: '#8892a4',
                 font: {
-                  family: "'JetBrains Mono', monospace",
+                  family: "'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif",
                   size: 11,
                   weight: '500'
                 }
@@ -78,7 +78,7 @@ export default {
                 backdropColor: 'transparent',
                 color: '#5a6275',
                 font: {
-                  family: "'JetBrains Mono', monospace",
+                  family: "'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif",
                   size: 9
                 },
                 stepSize: 20
@@ -94,7 +94,7 @@ export default {
               titleColor: '#e8eaed',
               titleFont: { family: "'Orbitron', sans-serif", size: 11 },
               bodyColor: '#8892a4',
-              bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+              bodyFont: { family: "'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif", size: 11 },
               padding: 12,
               borderColor: 'rgba(0, 229, 255, 0.15)',
               borderWidth: 1,

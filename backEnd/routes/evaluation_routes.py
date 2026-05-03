@@ -11,13 +11,14 @@ def evaluate_user_overall():
     uid = get_jwt_identity()
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] evaluate_user_overall - 用户ID: {uid}")
 
-    # 从请求中获取文件ID列表和会话ID
+    # 从请求中获取文件ID列表、会话ID和深度思考模式
     data = request.get_json() or {}
     file_ids = data.get('file_ids', None)
     session_id = data.get('session_id', None)
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] evaluate_user_overall - 文件IDs: {file_ids}, 会话ID: {session_id}")
+    deep_mode = data.get('deep_mode', False)
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] evaluate_user_overall - 文件IDs: {file_ids}, 会话ID: {session_id}, 深度思考: {deep_mode}")
 
-    evaluation, error = EvaluationService.evaluate_user_overall(int(uid), model_service, file_ids, session_id)
+    evaluation, error = EvaluationService.evaluate_user_overall(int(uid), model_service, file_ids, session_id, deep_mode)
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] evaluate_user_overall - 评估结果: {error if error else '成功'}")
 
     if error:
@@ -33,7 +34,8 @@ def evaluate_user_overall():
         'expression_score': evaluation.expression_score,
         'knowledge_score': evaluation.knowledge_score,
         'overall_score': evaluation.overall_score,
-        'feedback': evaluation.feedback
+        'feedback': evaluation.feedback,
+        'timestamp': (evaluation.timestamp.isoformat() + 'Z') if evaluation.timestamp else None,
     })
 
 @jwt_required()
@@ -53,3 +55,14 @@ def get_evaluations():
     evaluations = EvaluationService.get_user_evaluations(int(uid), session_id)
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] get_evaluations - 获取到评估数量: {len(evaluations)}")
     return jsonify(evaluations)
+
+
+@jwt_required()
+def delete_evaluation(evaluation_id):
+    uid = int(get_jwt_identity())
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] delete_evaluation - 用户ID: {uid}, 评估ID: {evaluation_id}")
+    success = EvaluationService.delete_evaluation(evaluation_id, uid)
+    if not success:
+        return jsonify({'error': '评估记录不存在或无权访问'}), 404
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] delete_evaluation - 删除成功")
+    return jsonify({'message': '删除成功'})

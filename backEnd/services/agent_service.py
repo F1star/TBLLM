@@ -118,7 +118,7 @@ class AgentService:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.chat - 响应长度: {len(response)}")
         return response
 
-    def evaluate(self, chat_history: str, file_context: str) -> dict:
+    def evaluate(self, chat_history: str, file_context: str, **kwargs) -> dict:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.evaluate - 聊天历史长度: {len(chat_history)}, 文件上下文长度: {len(file_context)}")
         prompt = EVALUATION_PROMPT.format(
             chat_history=chat_history or "暂无历史对话。",

@@ -63,7 +63,7 @@ class SessionService:
             'id': msg.id,
             'role': msg.role,
             'content': msg.content,
-            'timestamp': msg.timestamp.isoformat() if msg.timestamp else None
+            'timestamp': (msg.timestamp.isoformat() + 'Z') if msg.timestamp else None
         } for msg in messages]
 
     @staticmethod

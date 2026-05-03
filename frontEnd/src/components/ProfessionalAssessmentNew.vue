@@ -627,6 +627,15 @@ export default {
           if (optionKey && question.options && question.options[optionKey]) {
             newAnswers[index] = optionKey
             appliedCount++
+          } else if (optionKey && question.options) {
+            // 兼容旧数据：answer_text 存的是标签文本而非键，反向查找
+            const foundKey = Object.keys(question.options).find(
+              k => question.options[k] === optionKey
+            )
+            if (foundKey) {
+              newAnswers[index] = foundKey
+              appliedCount++
+            }
           }
         } else if (question.question_type === 'text') {
           // 填空题：直接使用文本答案
@@ -1084,15 +1093,11 @@ export default {
         }];
 
         // 构建按question_id索引的答案，用于保存到后端数据库
+        // 注意：单选题保存选项键（如"A"）而非标签文本，确保记忆恢复时能正确匹配
         const answersByQuestionId = {};
         filteredQuestions.value.forEach((q, idx) => {
           if (q.question_type !== 'matrix' && answers.value[idx]) {
-            let answerText = answers.value[idx];
-            // 对于单选题，保存选项标签以便阅读
-            if (q.question_type === 'single_choice' && q.options && q.options[answerText]) {
-              answerText = q.options[answerText];
-            }
-            answersByQuestionId[q.question_id] = answerText;
+            answersByQuestionId[q.question_id] = answers.value[idx];
           }
         });
 

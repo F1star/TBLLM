@@ -14,18 +14,38 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Union
 
 from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents.output_parsers import ReActSingleInputOutputParser
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseMemory
 from langchain.tools import BaseTool
+from langchain_core.agents import AgentAction, AgentFinish
 
 from services.local_llm import LocalChatLLM
 
 # 设置日志
 logger = logging.getLogger(__name__)
+
+
+class LenientReActParser(ReActSingleInputOutputParser):
+    """容错版 ReAct 解析器，自动修正常见格式问题"""
+
+    def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
+        # 中文标签 → 英文
+        text = text.replace('思考：', 'Thought:')
+        text = text.replace('行动：', 'Action:')
+        text = text.replace('行动输入：', 'Action Input:')
+        text = text.replace('观察：', 'Observation:')
+        text = text.replace('最终回答：', 'Final Answer:')
+        # 修正大小写问题（大小写不敏感替换）
+        text = re.sub(r'(?im)^\s*Action\s+Input\s*:', 'Action Input:', text)
+        text = re.sub(r'(?im)^\s*Action\s*:', 'Action:', text)
+        text = re.sub(r'(?im)^\s*Final\s+Answer\s*:', 'Final Answer:', text)
+        return super().parse(text)
 
 
 class AdvancedAgent:
@@ -68,7 +88,8 @@ class AdvancedAgent:
         self.agent = create_react_agent(
             llm=self.llm,
             tools=self.tools,
-            prompt=self.react_prompt
+            prompt=self.react_prompt,
+            output_parser=LenientReActParser(),
         )
 
         self.agent_executor = AgentExecutor(
@@ -86,40 +107,43 @@ class AdvancedAgent:
     def _create_react_prompt(self) -> PromptTemplate:
         """创建针对中文优化的ReAct提示模板"""
 
-        # 系统提示 - 定义Agent的角色和能力
-        system_prompt = """你是一个名为"智评小助手"的教育评估助手，专门帮助青少年进行能力评估。
+        template = """你是一个名为"智评小助手"的教育评估助手，专门帮助青少年进行能力评估。
 你具有以下能力：
 1. 使用工具获取信息（时间、文档、评估等）
 2. 进行逻辑推理和分析
 3. 提供友好、有帮助的回答
 4. 引导用户进行能力评估对话
 
-请使用以下格式进行思考：
+你必须严格按照以下格式进行推理，注意英文标签的大小写必须完全一致：
 
-思考：你需要考虑用户的问题，决定是否需要使用工具
-行动：你要使用的工具名称
-行动输入：工具的输入参数
-观察：工具返回的结果
-...（这个思考/行动/观察循环可以重复多次）
-思考：我现在有足够的信息可以回答用户的问题了
-最终回答：给用户的最终回答
+Thought: 你需要考虑用户的问题，决定是否需要使用工具
+Action: 你要使用的工具名称（必须来自可用工具列表）
+Action Input: 工具的输入参数（必须是JSON格式）
+Observation: 工具返回的结果
+...（这个 Thought/Action/Action Input/Observation 循环可以重复多次）
+Thought: 我现在有足够的信息可以回答用户的问题了
+Final Answer: 给用户的最终回答
 
-工具列表：
+可用工具：
 {tools}
 
-请严格遵循上述格式。如果已经能够直接回答，就直接给出最终回答。
-"""
+工具名称：{tool_names}
 
-        # 完整提示模板
-        template = f"""{system_prompt}
+重要规则：
+1. "Action Input:" 的 Input 首字母 I 必须大写
+2. Action: 后面只能跟可用工具列表中的工具名称
+3. 工具不需要 user_id 参数，系统会自动识别
+4. 如果工具调用失败，重新尝试不同的参数，最多尝试3次
+5. 如果已经能够直接回答，就直接给出 Final Answer
 
 历史对话：
-{{chat_history}}
+{chat_history}
 
-用户问题：{{input}}
+用户问题：{input}
 
-你必须在"思考："、"行动："、"行动输入："、"观察："、"最终回答："这些标签后提供内容。
-现在开始：
+{agent_scratchpad}
+
+严格按照上述格式回答。现在开始：
 """
 
         return PromptTemplate.from_template(template)
@@ -170,23 +194,28 @@ class AdvancedAgent:
     def evaluate(
         self,
         chat_history: str,
-        file_context: str
+        file_context: str,
+        deep_mode: bool = False,
     ) -> Dict[str, Any]:
         """
-        评估用户能力（兼容现有接口）
+        评估用户能力
 
         Args:
             chat_history: 历史对话文本
             file_context: 文件上下文
+            deep_mode: 是否启用深度思考（True=ReAct循环，False=直接LLM）
 
         Returns:
             评估结果字典
         """
-        # 注意：评估功能可能需要专门的工具或不同的Agent配置
-        # 这里先实现一个兼容版本，后续可以优化
+        if deep_mode:
+            return self._evaluate_react(chat_history, file_context)
+        else:
+            return self._evaluate_simple(chat_history, file_context)
 
-        # 创建评估专用的提示
-        evaluation_prompt = f"""你是一个教育场景的评估智能体。
+    def _evaluate_simple(self, chat_history: str, file_context: str) -> Dict[str, Any]:
+        """直接 LLM 评估，绕过 ReAct"""
+        simple_prompt = f"""你是一个教育场景的评估智能体。
 
 历史对话：
 {chat_history or "暂无历史对话。"}
@@ -215,29 +244,87 @@ class AdvancedAgent:
 - overall_score为四个维度的平均分
 - feedback应该包含具体的改进建议
 """
-
         try:
-            # 使用LLM直接生成评估结果（简化实现）
             response = self.llm.invoke(
-                evaluation_prompt,
+                simple_prompt,
                 max_new_tokens=1024,
                 temperature=0.2
             ).strip()
 
-            # 解析JSON响应
-            result = self._extract_json(response)
-            if result is None:
-                logger.error(f"评估结果解析失败: {response[:200]}")
+            parsed = self._extract_json(response)
+            if parsed is None:
+                logger.error(f"评估 JSON 解析失败: {response[:200]}")
                 raise ValueError(f"评估结果解析失败: {response[:200]}")
 
-            # 确保所有分数字段不为None
             score_keys = ['logic_score', 'creativity_score', 'expression_score', 'knowledge_score', 'overall_score']
             for key in score_keys:
-                if result.get(key) is None:
-                    logger.warning(f"评估结果中 {key} 为null，已设为0")
-                    result[key] = 0
+                if parsed.get(key) is None:
+                    logger.warning(f"评估结果中 {key} 为 null，已设为 0")
+                    parsed[key] = 0
 
-            return result
+            return parsed
+        except Exception as e:
+            logger.error(f"评估过程出错: {str(e)}", exc_info=True)
+            raise
+
+    def _evaluate_react(self, chat_history: str, file_context: str) -> Dict[str, Any]:
+        """使用 ReAct 循环评估用户能力"""
+        # 清除之前对话的记忆，避免干扰
+        self.clear_memory()
+
+        eval_input = f"""你需要对一个学生的综合能力进行评估。
+
+【背景参考】
+对话历史摘要：{chat_history[:1500] if chat_history else "暂无"}
+文件内容摘要：{file_context[:1500] if file_context else "暂无"}
+
+请严格按照以下步骤执行：
+步骤1：使用 all_history 工具获取该学生的所有会话历史（工具不需要任何参数，直接调用即可）。
+步骤2：使用 file_summary 工具获取该学生上传的文件内容（工具不需要任何参数，直接调用即可）。
+步骤3：综合所有信息，从四个维度评分（0-100的整数）：
+- logic_score：逻辑思维能力
+- creativity_score：创造力
+- expression_score：表达能力
+- knowledge_score：知识广度
+步骤4：overall_score 为四项平均分取整，feedback 给出简短评价建议。
+
+最终只输出一个 JSON 对象，格式如下：
+{{
+    "logic_score": 分数,
+    "creativity_score": 分数,
+    "expression_score": 分数,
+    "knowledge_score": 分数,
+    "overall_score": 平均分,
+    "feedback": "评价和建议"
+}}
+
+重要：工具调用不需要 user_id、student_id、files 等参数，直接传入空字符串即可。
+注意：必须先使用工具获取信息，不能凭空评分。"""
+
+        try:
+            result = self.agent_executor.invoke({"input": eval_input})
+            response = result.get("output", "")
+
+            logger.info(f"评估原始响应: {response[:300]}")
+
+            # 直接用 _extract_json 从原始输出中提取 JSON
+            parsed = self._extract_json(response)
+            if parsed is None:
+                # 如果直接没找到，尝试清理后再次提取
+                cleaned = self._clean_response(response)
+                parsed = self._extract_json(cleaned)
+
+            if parsed is None:
+                logger.error(f"评估 JSON 解析失败: {response[:200]}")
+                raise ValueError(f"评估结果解析失败: {response[:200]}")
+
+            score_keys = ['logic_score', 'creativity_score', 'expression_score', 'knowledge_score', 'overall_score']
+            for key in score_keys:
+                if parsed.get(key) is None:
+                    logger.warning(f"评估结果中 {key} 为 null，已设为 0")
+                    parsed[key] = 0
+
+            return parsed
 
         except Exception as e:
             logger.error(f"评估过程出错: {str(e)}", exc_info=True)
@@ -245,12 +332,15 @@ class AdvancedAgent:
 
     def _clean_response(self, response: str) -> str:
         """清理Agent回复，移除可能的中间步骤标记"""
-        # 移除"最终回答："标签及其之前的内容
+        # 移除英文"Final Answer:"标签及其之前的内容
+        if "Final Answer:" in response:
+            response = response.split("Final Answer:")[-1].strip()
+        # 兼容中文标签
         if "最终回答：" in response:
             response = response.split("最终回答：")[-1].strip()
 
-        # 移除其他可能的过程标记
-        markers = ["思考：", "行动：", "行动输入：", "观察："]
+        # 移除其他可能的过程标记（中英文）
+        markers = ["思考：", "行动：", "行动输入：", "观察：", "Thought:", "Action:", "Action Input:", "Observation:"]
         for marker in markers:
             if marker in response:
                 # 只保留最后一个标记之后的内容
@@ -296,7 +386,8 @@ class AdvancedAgent:
         self.agent = create_react_agent(
             llm=self.llm,
             tools=self.tools,
-            prompt=self.react_prompt
+            prompt=self.react_prompt,
+            output_parser=LenientReActParser(),
         )
         self.agent_executor.agent = self.agent
         logger.info(f"添加新工具: {tool.name}")
@@ -360,9 +451,9 @@ class CompatibleAgentService:
         """兼容chat方法"""
         return self.advanced_agent.chat(message, chat_history)
 
-    def evaluate(self, chat_history: str, file_context: str) -> dict:
+    def evaluate(self, chat_history: str, file_context: str, deep_mode: bool = False) -> dict:
         """兼容evaluate方法"""
-        return self.advanced_agent.evaluate(chat_history, file_context)
+        return self.advanced_agent.evaluate(chat_history, file_context, deep_mode=deep_mode)
 
     def professional_assess(self, assessment_text: str, cohort: str) -> dict:
         """兼容professional_assess方法 - 直接使用原始的AgentService"""

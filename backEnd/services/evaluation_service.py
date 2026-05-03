@@ -8,15 +8,16 @@ from services.session_service import SessionService
 
 class EvaluationService:
     @staticmethod
-    def evaluate_user_overall(user_id, model_service, file_ids=None, session_id=None):
+    def evaluate_user_overall(user_id, model_service, file_ids=None, session_id=None, deep_mode=False):
         """评估用户整体或特定会话
         Args:
             user_id: 用户ID
             model_service: 模型服务
             file_ids: 文件ID列表
             session_id: 可选，会话ID。如果为None，则评估未关联到会话的历史记录
+            deep_mode: 是否启用深度思考（ReAct循环）
         """
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 用户ID: {user_id}, 文件IDs: {file_ids}, 会话ID: {session_id}")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 用户ID: {user_id}, 文件IDs: {file_ids}, 会话ID: {session_id}, 深度思考: {deep_mode}")
         if session_id:
             # 评估特定会话
             user_chats = ChatService.get_user_history(user_id, session_id=session_id)
@@ -38,6 +39,8 @@ class EvaluationService:
             evaluation_data = model_service.generate_evaluation(
                 chat_history_text=chat_history_text,
                 file_context_text=file_context_text,
+                user_id=user_id,
+                deep_mode=deep_mode,
             )
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EvaluationService.evaluate_user_overall - 模型评估完成")
 
@@ -81,7 +84,7 @@ class EvaluationService:
                 "knowledge_score": evaluation.knowledge_score,
                 "overall_score": evaluation.overall_score,
                 "feedback": evaluation.feedback,
-                "timestamp": evaluation.timestamp.isoformat(),
+                "timestamp": (evaluation.timestamp.isoformat() + 'Z') if evaluation.timestamp else None,
             }
         return None
 
@@ -103,10 +106,20 @@ class EvaluationService:
                 "knowledge_score": e.knowledge_score,
                 "overall_score": e.overall_score,
                 "feedback": e.feedback,
-                "timestamp": e.timestamp.isoformat(),
+                "timestamp": (e.timestamp.isoformat() + 'Z') if e.timestamp else None,
             }
             for e in evaluations
         ]
+
+    @staticmethod
+    def delete_evaluation(evaluation_id, user_id):
+        """删除评估记录"""
+        evaluation = Evaluation.query.filter_by(id=evaluation_id, user_id=user_id).first()
+        if not evaluation:
+            return False
+        db.session.delete(evaluation)
+        db.session.commit()
+        return True
 
     @staticmethod
     def _build_chat_history_text(user_chats):

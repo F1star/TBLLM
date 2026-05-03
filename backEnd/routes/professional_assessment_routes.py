@@ -196,7 +196,7 @@ def evaluate_session(session_id):
             'knowledge_score': evaluation.knowledge_score,
             'overall_score': evaluation.overall_score,
             'feedback': evaluation.feedback,
-            'timestamp': evaluation.timestamp.isoformat() if evaluation.timestamp else None
+            'timestamp': (evaluation.timestamp.isoformat() + 'Z') if evaluation.timestamp else None
         }
     })
 

@@ -16,3 +16,4 @@ lora_weights/
 backEnd/scripts/finetune_lora.log
 memory/
 CLAUDE.md
+paper/

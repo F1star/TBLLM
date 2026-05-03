@@ -28,7 +28,7 @@ class ChatService:
             'id': h.id,
             'role': h.role,
             'content': h.content,
-            'timestamp': h.timestamp.isoformat(),
+            'timestamp': (h.timestamp.isoformat() + 'Z') if h.timestamp else None,
             'session_id': h.session_id
         } for h in history]
 
@@ -61,5 +61,5 @@ class ChatService:
             'id': h.id,
             'role': h.role,
             'content': h.content,
-            'timestamp': h.timestamp.isoformat()
+            'timestamp': (h.timestamp.isoformat() + 'Z') if h.timestamp else None
         } for h in history]

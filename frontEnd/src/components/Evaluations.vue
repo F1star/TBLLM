@@ -52,6 +52,9 @@
             <span class="cs-value" :class="getScoreClass(evaluation.knowledge_score)">{{ evaluation.knowledge_score }}</span>
           </div>
         </div>
+        <button class="delete-btn" @click.stop="deleteEvaluation(evaluation.id)" title="删除评分">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
       </div>
     </div>
 
@@ -151,6 +154,21 @@ const loadEvaluations = async () => {
   finally { loading.value = false }
 }
 
+const deleteEvaluation = async (id) => {
+  if (!confirm('确定要删除这条评分记录吗？')) return
+  const token = getToken()
+  if (!token) return
+  try {
+    const res = await fetch(`http://localhost:5000/api/evaluations/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (!res.ok) throw new Error('删除失败')
+    evaluations.value = evaluations.value.filter(e => e.id !== id)
+    if (selectedEvaluation.value?.id === id) selectedEvaluation.value = null
+  } catch (e) { console.error(e); alert('删除评分记录失败') }
+}
+
 const viewEvaluation = (evaluation) => { selectedEvaluation.value = evaluation }
 const closeModal = () => { selectedEvaluation.value = null }
 
@@ -196,7 +214,7 @@ onMounted(() => { loadEvaluations() })
   border-radius: 8px;
   color: #5a6275;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -432,6 +450,34 @@ onMounted(() => { loadEvaluations() })
 
 .evaluations-list::-webkit-scrollbar { width: 4px; }
 .evaluations-list::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.1); border-radius: 2px; }
+
+.delete-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  color: #5a6275;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.evaluation-card:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background: rgba(255,23,68,0.12);
+  color: #ff1744;
+  border-color: rgba(255,23,68,0.2);
+}
 
 @media (max-width: 768px) {
   .evaluations-list { padding: 18px; grid-template-columns: 1fr; }

@@ -242,7 +242,7 @@ export default {
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
   color: #e8eaed;
   transition: all 0.3s ease;
@@ -284,7 +284,7 @@ export default {
   color: #7c4dff;
   border: 1px solid rgba(124,77,255,0.25);
   border-radius: 10px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;

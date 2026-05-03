@@ -231,7 +231,14 @@ const clearHistory = async () => {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
-    if (!res.ok) throw new Error('清除失败')
+    if (!res.ok) {
+      if (res.status === 401) {
+        window.dispatchEvent(new CustomEvent('auth-unauthorized'))
+        alert('登录已过期，请重新登录')
+        return
+      }
+      throw new Error('清除失败')
+    }
     history.value = []
     alert('历史记录已清空')
   } catch (e) { alert('清除失败') }
@@ -329,7 +336,7 @@ onMounted(() => { loadHistory() })
 .selector-header h3 { font-family: 'Orbitron', sans-serif; font-size: 12px; color: #e8eaed; letter-spacing: 1px; }
 .close-btn { background: none; border: none; color: #5a6275; font-size: 20px; cursor: pointer; }
 .loading-sessions, .no-sessions { padding: 24px; text-align: center; color: #5a6275; font-size: 13px; }
-.create-session-btn { margin-top: 12px; padding: 8px 20px; background: rgba(0,229,255,0.1); color: #00e5ff; border: 1px solid rgba(0,229,255,0.2); border-radius: 6px; font-size: 12px; cursor: pointer; font-family: 'JetBrains Mono', monospace; }
+.create-session-btn { margin-top: 12px; padding: 8px 20px; background: rgba(0,229,255,0.1); color: #00e5ff; border: 1px solid rgba(0,229,255,0.2); border-radius: 6px; font-size: 12px; cursor: pointer; font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
 .sessions-list { overflow-y: auto; padding: 8px; }
 .session-item { padding: 12px 16px; border-radius: 8px; cursor: pointer; transition: all 0.2s; margin-bottom: 4px; }
 .session-item:hover { background: rgba(255,255,255,0.04); }
@@ -415,7 +422,7 @@ onMounted(() => { loadHistory() })
   border-radius: 6px;
   color: #00e5ff;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   cursor: pointer;
   transition: all 0.3s;
 }

@@ -26,6 +26,10 @@
         <button v-if="currentSession" @click="evaluateSession" class="action-btn" title="评估会话">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         </button>
+        <label class="deep-toggle" title="深度思考（使用 ReAct 分析）">
+          <input type="checkbox" v-model="deepEval">
+          <span class="toggle-switch-sm"></span>
+        </label>
         <button @click="clearHistory" class="action-btn danger" title="清除历史">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
@@ -80,27 +84,19 @@
         </div>
       </div>
 
-      <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
+      <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role, { streaming: index === streamingIndex }]">
         <div class="message-avatar">
           <svg v-if="msg.role === 'assistant'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>
           <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <div class="message-content">
-          <div class="message-text">{{ msg.content }}</div>
+          <div v-if="msg.role === 'assistant' && index === streamingIndex" class="message-text streaming-text">{{ msg.content }}</div>
+          <div v-else-if="msg.role === 'assistant'" class="message-text" v-html="renderMarkdown(msg.content)"></div>
+          <div class="message-text" v-else>{{ msg.content }}</div>
           <div class="message-time">{{ msg.time }}</div>
         </div>
       </div>
 
-      <div v-if="isLoading" class="message assistant">
-        <div class="message-avatar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>
-        </div>
-        <div class="message-content">
-          <div class="typing-indicator">
-            <span></span><span></span><span></span>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Input -->
@@ -114,7 +110,12 @@
           ref="inputArea"
           @input="autoResize"
         ></textarea>
-        <button @click="sendMessage" :disabled="!inputMessage.trim() || isLoading" class="send-btn">
+        <button v-if="isLoading" @click="stopGeneration" class="stop-btn" title="停止生成">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        </button>
+        <button v-else @click="sendMessage" :disabled="!inputMessage.trim()" class="send-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
@@ -125,20 +126,41 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import { marked } from 'marked'
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+})
+
+const renderMarkdown = (text) => {
+  if (!text) return ''
+  return marked.parse(text)
+}
 
 const messages = ref([])
 const inputMessage = ref('')
 const isLoading = ref(false)
+const streamingIndex = ref(-1)
+const abortController = ref(null)
 const messagesContainer = ref(null)
 const inputArea = ref(null)
+
+const stopGeneration = () => {
+  if (abortController.value) {
+    abortController.value.abort()
+    abortController.value = null
+  }
+}
 
 const currentSession = ref(null)
 const showSessionSelector = ref(false)
 const sessions = ref([])
 const sessionsLoading = ref(false)
+const deepEval = ref(false)
 
-const API_URL = 'http://localhost:5000/api/chat'
+const API_URL = 'http://localhost:5000/api/chat/stream'
 const CLEAR_API_URL = 'http://localhost:5000/api/chat/clear'
 const EVALUATE_API_URL = 'http://localhost:5000/api/evaluate'
 
@@ -149,8 +171,11 @@ const formatTime = (ts) => {
   return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+let scrollRAF = null
 const scrollToBottom = () => {
-  nextTick(() => {
+  if (scrollRAF) return
+  scrollRAF = requestAnimationFrame(() => {
+    scrollRAF = null
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
@@ -175,7 +200,14 @@ const sendMessage = async () => {
   inputMessage.value = ''
   if (inputArea.value) inputArea.value.style.height = 'auto'
   isLoading.value = true
+
+  // 添加空的 assistant 消息占位，记录索引以便直接操作 reactive proxy
+  const msgIdx = messages.value.length
+  messages.value.push({ role: 'assistant', content: '', time: formatTime() })
+  streamingIndex.value = msgIdx
   scrollToBottom()
+
+  abortController.value = new AbortController()
 
   try {
     const body = { message }
@@ -183,16 +215,63 @@ const sendMessage = async () => {
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: abortController.value.signal,
     })
     if (!res.ok) throw new Error('请求失败')
-    const data = await res.json()
-    messages.value.push({ role: 'assistant', content: data.response, time: formatTime() })
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let currentEvent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (currentEvent === 'session_created') {
+            const pipeIdx = data.indexOf('|')
+            if (pipeIdx !== -1) {
+              const sid = parseInt(data.slice(0, pipeIdx))
+              const sname = data.slice(pipeIdx + 1)
+              if (sid && !currentSession.value) {
+                currentSession.value = { id: sid, name: sname }
+                sessions.value.unshift({ id: sid, name: sname, message_count: 1 })
+                localStorage.setItem('current_session_id', sid)
+                localStorage.setItem('current_session_name', sname)
+              }
+            }
+            currentEvent = ''
+          } else {
+            // 通过 reactive proxy 直接更新，自动触发渲染
+            messages.value[msgIdx].content += data
+            scrollToBottom()
+          }
+        }
+      }
+    }
   } catch (e) {
+    if (e.name === 'AbortError') {
+      console.log('用户中断生成')
+      // 用户手动停止，保留已生成的内容
+      return
+    }
     console.error('发送失败:', e)
-    messages.value.push({ role: 'assistant', content: '发送消息时出现错误，请稍后重试。', time: formatTime() })
+    if (!messages.value[msgIdx]?.content) {
+      messages.value[msgIdx].content = '发送消息时出现错误，请稍后重试。'
+    }
   } finally {
     isLoading.value = false
+    streamingIndex.value = -1
+    abortController.value = null
     scrollToBottom()
   }
 }
@@ -212,7 +291,14 @@ const clearHistory = async () => {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
-    if (!res.ok) throw new Error('清除失败')
+    if (!res.ok) {
+      if (res.status === 401) {
+        window.dispatchEvent(new CustomEvent('auth-unauthorized'))
+        alert('登录已过期，请重新登录')
+        return
+      }
+      throw new Error('清除失败')
+    }
     messages.value = []
     alert('历史记录已清除')
   } catch (e) { console.error(e); alert('清除失败') }
@@ -226,7 +312,7 @@ const evaluateSession = async () => {
     const res = await fetch(EVALUATE_API_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: currentSession.value.id })
+      body: JSON.stringify({ session_id: currentSession.value.id, deep_mode: deepEval.value })
     })
     if (!res.ok) throw new Error('评估失败')
     const r = await res.json()
@@ -411,6 +497,50 @@ onMounted(() => {
   border-color: rgba(255,23,68,0.2);
 }
 
+.deep-toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.deep-toggle input {
+  display: none;
+}
+
+.toggle-switch-sm {
+  width: 28px;
+  height: 16px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.toggle-switch-sm::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  background: #5a6275;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.deep-toggle input:checked + .toggle-switch-sm {
+  background: rgba(124,77,255,0.2);
+  border-color: rgba(124,77,255,0.4);
+  box-shadow: 0 0 8px rgba(124,77,255,0.15);
+}
+
+.deep-toggle input:checked + .toggle-switch-sm::after {
+  left: 14px;
+  background: linear-gradient(135deg, #00e5ff, #7c4dff);
+}
+
 /* Session Selector */
 .selector-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200;
@@ -461,7 +591,7 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
 .sessions-list { overflow-y: auto; padding: 8px; }
@@ -520,7 +650,7 @@ onMounted(() => {
   border-radius: 8px;
   color: #8892a4;
   font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   cursor: pointer;
   transition: all 0.3s;
   display: flex;
@@ -592,6 +722,144 @@ onMounted(() => {
   border-bottom-left-radius: 4px;
 }
 
+.message.assistant .message-text :deep(p) {
+  margin-bottom: 8px;
+  line-height: 1.7;
+}
+
+.message.assistant .message-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.message.assistant .message-text :deep(strong) {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.message.assistant .message-text :deep(em) {
+  font-style: italic;
+}
+
+.message.assistant .message-text :deep(code) {
+  font-family: 'JetBrains Mono', 'PingFang SC', monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  background: rgba(0,229,255,0.08);
+  border: 1px solid rgba(0,229,255,0.12);
+  border-radius: 4px;
+  color: #00e5ff;
+  word-break: break-all;
+}
+
+.message.assistant .message-text :deep(pre) {
+  margin: 8px 0;
+  padding: 12px 16px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.message.assistant .message-text :deep(pre code) {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #e8eaed;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.message.assistant .message-text :deep(ul),
+.message.assistant .message-text :deep(ol) {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.message.assistant .message-text :deep(li) {
+  margin-bottom: 4px;
+  line-height: 1.7;
+}
+
+.message.assistant .message-text :deep(blockquote) {
+  margin: 8px 0;
+  padding: 8px 14px;
+  border-left: 3px solid rgba(0,229,255,0.3);
+  background: rgba(0,229,255,0.03);
+  border-radius: 0 6px 6px 0;
+  color: #8892a4;
+}
+
+.message.assistant .message-text :deep(h1),
+.message.assistant .message-text :deep(h2),
+.message.assistant .message-text :deep(h3),
+.message.assistant .message-text :deep(h4) {
+  margin: 12px 0 6px;
+  color: #e8eaed;
+  font-weight: 600;
+}
+
+.message.assistant .message-text :deep(h1) { font-size: 16px; }
+.message.assistant .message-text :deep(h2) { font-size: 15px; }
+.message.assistant .message-text :deep(h3) { font-size: 14px; }
+.message.assistant .message-text :deep(h4) { font-size: 13px; }
+
+.message.assistant .message-text :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.message.assistant .message-text :deep(th),
+.message.assistant .message-text :deep(td) {
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+}
+
+.message.assistant .message-text :deep(th) {
+  background: rgba(0,229,255,0.06);
+  color: #00e5ff;
+  font-weight: 600;
+}
+
+.message.assistant .message-text :deep(tr:nth-child(even)) {
+  background: rgba(255,255,255,0.02);
+}
+
+.message.assistant .message-text :deep(a) {
+  color: #00e5ff;
+  text-decoration: underline;
+  opacity: 0.8;
+}
+
+.message.assistant .message-text :deep(a:hover) {
+  opacity: 1;
+}
+
+.message.assistant .message-text :deep(hr) {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.streaming-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.streaming-text::after {
+  content: '▊';
+  display: inline;
+  animation: cursorBlink 1s step-end infinite;
+  color: #00e5ff;
+  margin-left: 2px;
+}
+
+@keyframes cursorBlink {
+  50% { opacity: 0; }
+}
+
 .message-time {
   font-size: 11px;
   color: #5a6275;
@@ -599,26 +867,6 @@ onMounted(() => {
 }
 
 .message.user .message-time { text-align: right; }
-
-.typing-indicator {
-  display: flex;
-  gap: 6px;
-  padding: 12px 16px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  border-bottom-left-radius: 4px;
-}
-
-.typing-indicator span {
-  width: 8px; height: 8px;
-  background: linear-gradient(135deg, #00e5ff, #7c4dff);
-  border-radius: 50%;
-  animation: typingBounce 1.4s infinite ease-in-out both;
-}
-
-.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
 
 @keyframes typingBounce {
   0%, 80%, 100% { transform: scale(0); }
@@ -646,7 +894,7 @@ textarea {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
   color: #e8eaed;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
   resize: none;
   outline: none;
@@ -684,6 +932,26 @@ textarea::placeholder { color: #3a4258; }
 }
 
 .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.stop-btn {
+  width: 44px;
+  height: 44px;
+  background: rgba(255,23,68,0.15);
+  border: 1px solid rgba(255,23,68,0.3);
+  border-radius: 10px;
+  color: #ff1744;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+  flex-shrink: 0;
+}
+
+.stop-btn:hover {
+  background: rgba(255,23,68,0.25);
+  box-shadow: 0 0 20px rgba(255,23,68,0.2);
+}
 
 .chat-messages::-webkit-scrollbar { width: 4px; }
 .chat-messages::-webkit-scrollbar-track { background: transparent; }

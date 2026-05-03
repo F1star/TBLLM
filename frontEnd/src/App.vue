@@ -114,10 +114,17 @@
                   </div>
                   <div class="evaluation-footer">
                     <span class="evaluation-time">评分时间：{{ formatTime(latestEvaluation.timestamp) }}</span>
-                    <button @click="startEvaluation" class="btn-glow" :disabled="isEvaluating">
-                      <span v-if="!isEvaluating">重新评估</span>
-                      <span v-else>评估中...</span>
-                    </button>
+                    <div class="eval-actions">
+                      <label class="deep-toggle" title="使用 ReAct 深度分析所有会话和文件后再评分">
+                        <span class="toggle-label">深度思考</span>
+                        <input type="checkbox" v-model="deepMode">
+                        <span class="toggle-switch"></span>
+                      </label>
+                      <button @click="startEvaluation" class="btn-glow" :disabled="isEvaluating">
+                        <span v-if="!isEvaluating">重新评估</span>
+                        <span v-else>评估中...</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div v-else class="no-evaluation">
@@ -127,10 +134,17 @@
                     </svg>
                   </div>
                   <p>暂无评分记录</p>
-                  <button @click="startEvaluation" class="btn-glow" :disabled="isEvaluating">
-                    <span v-if="!isEvaluating">开始评估</span>
-                    <span v-else>评估中...</span>
-                  </button>
+                  <div class="eval-actions" style="justify-content:center;">
+                    <label class="deep-toggle" title="使用 ReAct 深度分析所有会话和文件后再评分">
+                      <span class="toggle-label">深度思考</span>
+                      <input type="checkbox" v-model="deepMode">
+                      <span class="toggle-switch"></span>
+                    </label>
+                    <button @click="startEvaluation" class="btn-glow" :disabled="isEvaluating">
+                      <span v-if="!isEvaluating">开始评估</span>
+                      <span v-else>评估中...</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -274,6 +288,7 @@ export default {
       username: '',
       latestEvaluation: null,
       isEvaluating: false,
+      deepMode: false,
       fileIds: [],
       passwordForm: { currentPassword: '', newPassword: '', confirmPassword: '' },
       isChangingPassword: false,
@@ -318,7 +333,8 @@ export default {
         { label: '综合评分', value: e ? e.overall_score : '-', color: '#00e5ff', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>' },
         { label: '逻辑思维', value: e ? e.logic_score : '-', color: '#7c4dff', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>' },
         { label: '创造力', value: e ? e.creativity_score : '-', color: '#00e676', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1-8.313-12.454z"/></svg>' },
-        { label: '表达能力', value: e ? e.expression_score : '-', color: '#ffab00', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' }
+        { label: '表达能力', value: e ? e.expression_score : '-', color: '#ffab00', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+        { label: '知识广度', value: e ? e.knowledge_score : '-', color: '#448aff', icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>' }
       ];
     },
     scoreItems() {
@@ -340,6 +356,10 @@ export default {
       this.username = username;
       this.loadLatestEvaluation();
     }
+    // 全局401处理：token过期时退出登录
+    window.addEventListener('auth-unauthorized', () => {
+      this.logout();
+    });
     this.updateTime();
     this.timerInterval = setInterval(() => this.updateTime(), 1000);
   },
@@ -394,7 +414,7 @@ export default {
         const res = await fetch('http://localhost:5000/api/evaluate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ file_ids: this.fileIds })
+          body: JSON.stringify({ file_ids: this.fileIds, deep_mode: this.deepMode })
         });
         if (res.ok) {
           this.latestEvaluation = await res.json();
@@ -472,8 +492,8 @@ export default {
   --accent-blue: #448aff;
   --glow-cyan: 0 0 20px rgba(0,229,255,0.12);
   --glow-purple: 0 0 20px rgba(124,77,255,0.12);
-  --font-display: 'Orbitron', sans-serif;
-  --font-body: 'JetBrains Mono', monospace;
+  --font-display: 'Orbitron', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'JetBrains Mono', sans-serif;
   --sidebar-width: 260px;
 }
 
@@ -1091,6 +1111,64 @@ body {
 .btn-glow:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.eval-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.deep-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.deep-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.deep-toggle input {
+  display: none;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.deep-toggle input:checked + .toggle-switch {
+  background: rgba(124,77,255,0.2);
+  border-color: rgba(124,77,255,0.4);
+  box-shadow: 0 0 12px rgba(124,77,255,0.15);
+}
+
+.deep-toggle input:checked + .toggle-switch::after {
+  left: 18px;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
 }
 
 .btn-danger {

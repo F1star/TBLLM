@@ -247,7 +247,7 @@ export default {
   border: 1px solid rgba(0,229,255,0.2);
   border-radius: 10px;
   color: #00e5ff;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -462,7 +462,7 @@ export default {
 
 .modal-body pre {
   margin: 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
   line-height: 1.6;
   color: #8892a4;

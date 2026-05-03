@@ -203,6 +203,10 @@ export default {
           body: JSON.stringify({ delete_messages: false })
         });
         if (res.ok) { this.sessions = this.sessions.filter(s => s.id !== session.id); }
+        else if (res.status === 401) {
+          window.dispatchEvent(new CustomEvent('auth-unauthorized'))
+          alert('登录已过期，请重新登录')
+        }
         else { const e = await res.json(); alert('删除失败: ' + (e.error || '未知错误')); }
       } catch (err) { alert('删除失败'); }
     },
@@ -285,7 +289,7 @@ export default {
   border: 1px solid rgba(0,229,255,0.2);
   border-radius: 8px;
   font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s;
@@ -336,7 +340,7 @@ export default {
   border: 1px solid rgba(255,23,68,0.2);
   border-radius: 6px;
   cursor: pointer;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
 }
 
@@ -409,7 +413,7 @@ export default {
   border: 1px solid rgba(0,229,255,0.25);
   border-radius: 6px;
   color: #e8eaed;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   outline: none;
 }
@@ -497,7 +501,7 @@ export default {
   border-radius: 6px;
   color: #8892a4;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -588,7 +592,7 @@ export default {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px;
   color: #e8eaed;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
   outline: none;
   transition: border-color 0.3s;
@@ -612,7 +616,7 @@ export default {
   padding: 10px 20px;
   border-radius: 8px;
   font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   cursor: pointer;
   transition: all 0.3s;
   font-weight: 500;

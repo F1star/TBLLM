@@ -9,14 +9,6 @@ from cryptography.fernet import Fernet
 import base64
 import hashlib
 
-# 尝试导入RAGService，用于向量存储集成
-try:
-    from services.rag_service import RAGService
-    RAG_AVAILABLE = True
-except ImportError as e:
-    RAG_AVAILABLE = False
-    logging.warning(f"RAGService不可用，文件向量存储功能将禁用: {e}")
-
 logger = logging.getLogger(__name__)
 
 class FileService:
@@ -72,9 +64,6 @@ class FileService:
         )
         db.session.add(new_file)
         db.session.commit()
-
-        # 尝试将文件内容添加到向量存储
-        FileService._add_file_to_vector_store(new_file.id, user_id, file.filename, filepath)
 
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] FileService.save_uploaded_file - 文件保存成功，文件ID: {new_file.id}")
         return new_file
@@ -205,9 +194,6 @@ class FileService:
         if not file:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] FileService.delete_file - 文件不存在")
             return False
-
-        # 从向量存储中删除文档片段
-        FileService._delete_file_from_vector_store(file_id, user_id)
 
         # 删除文件
         if os.path.exists(file.filepath):

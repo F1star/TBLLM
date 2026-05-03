@@ -12,8 +12,6 @@
 
 from __future__ import annotations
 
-import math
-import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Type
 
@@ -48,59 +46,6 @@ class TimeTool(BaseTool):
         return self._run(query)
 
 
-class CalculatorTool(BaseTool):
-    """计算器工具"""
-
-    name: str = "calculator"
-    description: str = (
-        "执行数学计算。支持加减乘除、幂运算、平方根等。"
-        "输入应该是一个数学表达式，如：'2 + 2', 'sqrt(16)', '3 * (4 + 5)'。"
-        "不支持变量或复杂函数。"
-    )
-    args_schema: Optional[Type] = None
-
-    def _run(self, expression: str) -> str:
-        """执行计算"""
-        try:
-            # 安全地评估数学表达式
-            result = self._safe_eval(expression)
-            return f"{expression} = {result}"
-        except Exception as e:
-            return f"计算错误: {str(e)}"
-
-    async def _arun(self, expression: str) -> str:
-        """异步执行计算"""
-        return self._run(expression)
-
-    def _safe_eval(self, expression: str) -> float:
-        """安全地评估数学表达式"""
-        # 清理表达式
-        expr = expression.strip()
-
-        # 定义允许的函数和常量
-        allowed_names = {
-            'abs': abs,
-            'round': round,
-            'min': min,
-            'max': max,
-            'pow': pow,
-            'sqrt': math.sqrt,
-            'sin': math.sin,
-            'cos': math.cos,
-            'tan': math.tan,
-            'pi': math.pi,
-            'e': math.e,
-        }
-
-        # 编译和评估表达式
-        code = compile(expr, '<string>', 'eval')
-
-        # 检查允许的名称
-        for name in code.co_names:
-            if name not in allowed_names:
-                raise ValueError(f"不允许的名称: {name}")
-
-        return eval(code, {"__builtins__": {}}, allowed_names)
 
 
 class DocumentRetrievalTool(BaseTool):
@@ -340,16 +285,191 @@ class EducationAssessmentTool(BaseTool):
         return self._run(question)
 
 
+class FileSummaryTool(BaseTool):
+    """获取已上传文件信息并进行总结"""
+
+    name: str = "file_summary"
+    description: str = (
+        "获取用户已上传的文件列表和内容摘要。"
+        "当用户询问上传了哪些文件、文件内容是什么、文件总结时使用。"
+        "输入可以是空字符串获取全部文件概要，或指定具体问题来筛选文件内容。"
+    )
+    args_schema: Optional[Type] = None
+    _user_id: int = 0
+
+    def set_user_id(self, user_id: int):
+        """设置用户ID"""
+        self._user_id = user_id
+
+    def _run(self, query: str = "") -> str:
+        """获取文件信息并总结"""
+        try:
+            from services.file_service import FileService
+            from config.settings import db
+
+            files = FileService.get_user_files(self._user_id)
+            if not files:
+                return "您还没有上传任何文件。"
+
+            lines = []
+            for f in files:
+                file_info = f"- {f.filename}（上传于 {f.upload_time.strftime('%Y-%m-%d %H:%M') if hasattr(f.upload_time, 'strftime') else f.upload_time}）"
+                lines.append(file_info)
+
+                # 解析文件内容并生成摘要
+                try:
+                    text = FileService.parse_file(f.filepath, self._user_id)
+                    if text and len(text) > 20:
+                        # 取前200字作为摘要
+                        summary = text[:200].replace('\n', ' ')
+                        if len(text) > 200:
+                            summary += "..."
+                        lines.append(f"  摘要：{summary}")
+                    else:
+                        lines.append("  摘要：文件内容为空或无法解析")
+                except Exception as e:
+                    lines.append(f"  摘要：读取失败（{str(e)}）")
+
+            return "您已上传的文件：\n" + "\n".join(lines)
+
+        except Exception as e:
+            return f"获取文件信息失败: {str(e)}"
+
+    async def _arun(self, query: str = "") -> str:
+        """异步执行"""
+        return self._run(query)
+
+
+class SessionHistoryTool(BaseTool):
+    """获取当前会话的聊天历史"""
+
+    name: str = "session_history"
+    description: str = (
+        "获取当前会话的聊天历史记录。"
+        "当用户询问之前说了什么、需要回顾对话内容时使用。"
+        "输入可以是空字符串获取完整历史，或指定查询关键词筛选相关对话。"
+    )
+    args_schema: Optional[Type] = None
+    _user_id: int = 0
+    _session_id: Optional[int] = None
+
+    def set_user_id(self, user_id: int):
+        self._user_id = user_id
+
+    def set_session_id(self, session_id: Optional[int]):
+        self._session_id = session_id
+
+    def _run(self, query: str = "") -> str:
+        """获取当前会话的聊天历史"""
+        try:
+            history = ChatService.get_user_history(self._user_id, session_id=self._session_id)
+            if not history:
+                return "当前会话暂无聊天记录。"
+
+            lines = []
+            for msg in history[-30:]:  # 最近30条
+                role = "用户" if msg["role"] == "user" else "AI助手"
+                lines.append(f"{role}: {msg['content'][:500]}")
+
+            result = "\n".join(lines)
+            prefix = f"当前会话历史（共{len(history)}条）：\n"
+            if query and len(query) > 2:
+                # 简单关键词筛选
+                filtered = [l for l in lines if query.lower() in l.lower()]
+                if filtered:
+                    result = "\n".join(filtered)
+                    prefix = f"与「{query}」相关的会话历史（共{len(filtered)}条）：\n"
+                else:
+                    return f"未找到与「{query}」相关的对话内容。"
+
+            return prefix + result
+
+        except Exception as e:
+            return f"获取会话历史失败: {str(e)}"
+
+    async def _arun(self, query: str = "") -> str:
+        return self._run(query)
+
+
+class AllSessionsHistoryTool(BaseTool):
+    """获取用户所有会话的全部聊天历史"""
+
+    name: str = "all_history"
+    description: str = (
+        "获取用户所有会话的全部聊天历史记录。"
+        "当需要全面了解用户的所有对话、进行综合评估时使用。"
+        "输入可以是空字符串获取全部历史，或指定查询关键词。"
+    )
+    args_schema: Optional[Type] = None
+    _user_id: int = 0
+
+    def set_user_id(self, user_id: int):
+        self._user_id = user_id
+
+    def _run(self, query: str = "") -> str:
+        """获取所有会话的聊天历史"""
+        try:
+            history = ChatService.get_user_history(self._user_id)
+            if not history:
+                return "暂无任何会话的聊天记录。"
+
+            # 按会话ID分组
+            from collections import defaultdict
+            sessions: dict = defaultdict(list)
+            for msg in history:
+                raw_sid = msg.get("session_id")
+                sid = str(raw_sid) if raw_sid is not None else "未分组"
+                sessions[sid].append(msg)
+
+            lines = []
+            total = len(history)
+            lines.append(f"用户共有 {len(sessions)} 个会话，总计 {total} 条消息。\n")
+
+            # 按数字排序（会话ID），"未分组"排最后
+            def sort_key(sid):
+                try:
+                    return (0, int(sid))
+                except ValueError:
+                    return (1, sid)
+
+            for sid, msgs in sorted(sessions.items(), key=lambda x: sort_key(x[0])):
+                session_label = f"会话 {sid}" if sid != "未分组" else "未分组历史"
+                lines.append(f"【{session_label}】（{len(msgs)}条）")
+                for msg in msgs[-10:]:  # 每个会话最近10条
+                    role = "用户" if msg["role"] == "user" else "AI助手"
+                    lines.append(f"  {role}: {msg['content'][:300]}")
+                lines.append("")
+
+            result = "\n".join(lines)
+
+            if query and len(query) > 2:
+                filtered = [l for l in lines if query.lower() in l.lower()]
+                if filtered:
+                    result = "\n".join(filtered)
+                else:
+                    return f"未找到与「{query}」相关的对话内容。"
+
+            return result
+
+        except Exception as e:
+            return f"获取全部会话历史失败: {str(e)}"
+
+    async def _arun(self, query: str = "") -> str:
+        return self._run(query)
+
+
 class EnhancedToolFactory:
     """增强版工具工厂"""
 
     @staticmethod
-    def create_basic_tools() -> List[BaseTool]:
+    def create_basic_tools(file_summary_tool: Optional[FileSummaryTool] = None) -> List[BaseTool]:
         """创建基础工具集"""
-        return [
-            TimeTool(),
-            CalculatorTool(),
-        ]
+        tools: List[BaseTool] = []
+        if file_summary_tool:
+            tools.append(file_summary_tool)
+        else:
+            tools.append(FileSummaryTool())
+        return tools
 
     @staticmethod
     def create_user_tools(
@@ -358,8 +478,7 @@ class EnhancedToolFactory:
     ) -> List[BaseTool]:
         """创建用户专用工具集"""
         tools = [
-            TimeTool(),
-            CalculatorTool(),
+            FileSummaryTool(),
             EducationAssessmentTool(),
         ]
 

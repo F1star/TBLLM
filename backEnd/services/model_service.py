@@ -32,7 +32,6 @@ from services.chat_service import ChatService
 try:
     from services.advanced_agent import AdvancedAgent, AdvancedAgentFactory, CompatibleAgentService
     from services.agent_tools_enhanced import EnhancedToolFactory
-    from services.rag_service import RAGService
     ADVANCED_AGENT_AVAILABLE = True
 except ImportError as e:
     ADVANCED_AGENT_AVAILABLE = False
@@ -152,25 +151,30 @@ class ModelService:
 
     def _create_advanced_agent(self):
         """
-        创建AdvancedAgent实例
-
-        Returns:
-            AdvancedAgent兼容包装器
+        创建单AdvancedAgent实例，包含所有工具。
+        通过工具 setter 控制每次调用实际可用的工具（未设置 ID 的工具返回空数据）
         """
         from services.local_llm import LocalChatLLM
-        from services.rag_service import RAGService
 
-        # 创建LocalChatLLM实例
         llm = LocalChatLLM(
             tokenizer=self.tokenizer,
             model=self.model,
             max_new_tokens=MAX_NEW_TOKENS
         )
 
-        # 创建基础工具集（这里暂时不传入用户ID，实际使用时需要根据用户动态创建）
-        tools = EnhancedToolFactory.create_basic_tools()
+        # 创建工具实例（后续通过 setter 注入 user_id / session_id）
+        from services.agent_tools_enhanced import FileSummaryTool, SessionHistoryTool, AllSessionsHistoryTool
+        self._file_summary_tool = FileSummaryTool()
+        self._session_history_tool = SessionHistoryTool()
+        self._all_history_tool = AllSessionsHistoryTool()
 
-        # 创建AdvancedAgent
+        # 单Agent，包含所有工具
+        tools = [
+            self._file_summary_tool,
+            self._session_history_tool,
+            self._all_history_tool,
+        ]
+
         advanced_agent = AdvancedAgent(
             llm=llm,
             tools=tools,
@@ -178,7 +182,6 @@ class ModelService:
             verbose=AGENT_VERBOSE
         )
 
-        # 使用兼容性包装器
         return CompatibleAgentService(advanced_agent)
 
     def generate_response(self, prompt, user_id, session_id=None):
@@ -189,6 +192,11 @@ class ModelService:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成聊天响应 - 用户ID: {user_id}, 会话ID: {session_id}, 提示: {prompt[:50]}...")
         with self.generate_lock:
             try:
+                # 对话场景：仅设置当前会话历史工具，其他工具无 context 返回空数据
+                if hasattr(self, '_session_history_tool'):
+                    self._session_history_tool.set_user_id(int(user_id))
+                    self._session_history_tool.set_session_id(session_id)
+
                 history = ChatService.get_recent_chats(int(user_id), limit=10, session_id=session_id)
                 history_text = self._format_history(history, current_prompt=prompt)
                 response = self.agent_service.chat(
@@ -208,17 +216,101 @@ class ModelService:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Agent 推理异常: {str(e)}")
                 return f"Agent 推理错误: {str(e)}"
 
-    def generate_evaluation(self, chat_history_text, file_context_text):
+    def generate_chat_stream(self, prompt, user_id, session_id=None):
+        """
+        流式生成聊天响应，绕过 Agent ReAct 循环直接使用 LLM 生成。
+        Yields:
+            str: 每次 yield 一个 token 片段
+        """
+        if self.model is None or self.tokenizer is None:
+            yield "模型未正确加载，请检查后端日志。"
+            return
+
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 用户ID: {user_id}, 会话ID: {session_id}, 提示: {prompt[:50]}...")
+        with self.generate_lock:
+            try:
+                # 获取历史对话
+                history = ChatService.get_recent_chats(int(user_id), limit=10, session_id=session_id)
+                history_text = self._format_history(history, current_prompt=prompt)
+                if not history_text:
+                    history_text = "暂无历史对话。"
+
+                # 构建简洁的对话 prompt（使用 AgentService 验证过的格式）
+                if history_text and history_text != "暂无历史对话。":
+                    chat_prompt = f"""你是一个友好的AI助手，名叫智评小助手。请简洁地直接回答用户的问题。
+
+历史对话：
+{history_text}
+
+用户：{prompt}
+助手："""
+                else:
+                    chat_prompt = f"""你是一个友好的AI助手，名叫智评小助手。请简洁地直接回答用户的问题。
+
+用户：{prompt}
+助手："""
+
+                # 不使用 apply_chat_template，直接传入纯文本 prompt
+                inputs = self.tokenizer([chat_prompt], return_tensors="pt").to(self.model.device)
+
+                from transformers import TextIteratorStreamer
+                streamer = TextIteratorStreamer(
+                    self.tokenizer, skip_prompt=True, skip_special_tokens=True
+                )
+
+                generation_kwargs = dict(
+                    input_ids=inputs.input_ids,
+                    attention_mask=inputs.attention_mask,
+                    streamer=streamer,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    do_sample=True,
+                    temperature=0.3,
+                    repetition_penalty=1.2,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                )
+
+                import threading
+                thread = threading.Thread(
+                    target=self.model.generate,
+                    kwargs=generation_kwargs,
+                )
+                thread.start()
+
+                full_response = ""
+                for token in streamer:
+                    full_response += token
+                    yield token
+
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 流式生成完成，总长度: {len(full_response)}")
+
+            except RuntimeError as e:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 流式推理运行时错误: {str(e)}")
+                if "out of memory" in str(e).lower():
+                    torch.cuda.empty_cache()
+                yield f"\n[生成错误: 显存不足，请重试]"
+            except Exception as e:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 流式推理异常: {str(e)}")
+                yield f"\n[生成错误: {str(e)}]"
+
+    def generate_evaluation(self, chat_history_text, file_context_text, user_id=None, deep_mode=False):
         if self.model is None or self.tokenizer is None or self.agent_service is None:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型未加载，无法生成评估")
             raise ValueError("模型未正确加载，请检查后端日志。")
 
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成能力评估 - 聊天历史长度: {len(chat_history_text)}, 文件上下文长度: {len(file_context_text)}")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成能力评估 - 聊天历史长度: {len(chat_history_text)}, 文件上下文长度: {len(file_context_text)}, 用户ID: {user_id}, 深度思考: {deep_mode}")
         with self.generate_lock:
             try:
+                # 评估场景：仅设置全部会话历史工具和文件总结工具
+                if user_id is not None:
+                    if hasattr(self, '_all_history_tool'):
+                        self._all_history_tool.set_user_id(int(user_id))
+                    if hasattr(self, '_file_summary_tool'):
+                        self._file_summary_tool.set_user_id(int(user_id))
+
                 result = self.agent_service.evaluate(
                     chat_history=chat_history_text,
                     file_context=file_context_text,
+                    deep_mode=deep_mode,
                 )
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 评估完成 - 逻辑: {result.get('logic_score')}, 创造力: {result.get('creativity_score')}, 表达: {result.get('expression_score')}, 知识: {result.get('knowledge_score')}")
                 return result

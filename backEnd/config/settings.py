@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
@@ -9,6 +10,7 @@ app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = 'jwt-secret-key-change-this-in-production'
 app.config['SECRET_KEY'] = 'file-encryption-secret-key-change-this-in-production'
 app.config['JWT_TOKEN_LOCATION'] = ['headers', 'json']
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
