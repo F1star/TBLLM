@@ -1,5 +1,6 @@
 import threading
 import logging
+from contextlib import nullcontext
 from datetime import datetime
 
 # 尝试导入torch，如果失败则设置为None
@@ -23,10 +24,19 @@ except Exception as e:
 
 from config.constants import (
     MAX_CONTEXT_CHARS, MAX_NEW_TOKENS, ORIGINAL_MODEL_PATH, FINETUNED_MODEL_PATH,
-    USE_ADVANCED_AGENT, AGENT_MAX_ITERATIONS, AGENT_VERBOSE
+    USE_ADVANCED_AGENT, AGENT_MAX_ITERATIONS, AGENT_VERBOSE,
+    CHAT_MAX_NEW_TOKENS, CHAT_TEMPERATURE, CHAT_TOP_P, CHAT_HISTORY_LIMIT,
+    CHAT_MESSAGE_CONTEXT_CHARS, CHAT_SYSTEM_PROMPT
 )
-from services.agent_service import AgentService
 from services.chat_service import ChatService
+
+try:
+    from services.agent_service import AgentService
+    AGENT_SERVICE_AVAILABLE = True
+except ImportError as e:
+    AgentService = None
+    AGENT_SERVICE_AVAILABLE = False
+    logging.warning(f"AgentService不可用，评估类功能可能无法使用: {e}")
 
 # 尝试导入AdvancedAgent，如果失败则使用原版
 try:
@@ -129,18 +139,26 @@ class ModelService:
                     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 已启用AdvancedAgent服务")
                 except Exception as e:
                     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AdvancedAgent创建失败，回退到原版AgentService: {str(e)}")
+                    if AGENT_SERVICE_AVAILABLE:
+                        self.agent_service = AgentService(
+                            tokenizer=self.tokenizer,
+                            model=self.model,
+                            max_new_tokens=MAX_NEW_TOKENS,
+                        )
+                    else:
+                        self.agent_service = None
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService不可用，评估类功能将不可用")
+            else:
+                if AGENT_SERVICE_AVAILABLE:
                     self.agent_service = AgentService(
                         tokenizer=self.tokenizer,
                         model=self.model,
                         max_new_tokens=MAX_NEW_TOKENS,
                     )
-            else:
-                self.agent_service = AgentService(
-                    tokenizer=self.tokenizer,
-                    model=self.model,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                )
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 使用原版AgentService")
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 使用原版AgentService")
+                else:
+                    self.agent_service = None
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService不可用，评估类功能将不可用")
         except Exception:
             import traceback
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型加载失败!")
@@ -185,36 +203,26 @@ class ModelService:
         return CompatibleAgentService(advanced_agent)
 
     def generate_response(self, prompt, user_id, session_id=None):
-        if self.model is None or self.tokenizer is None or self.agent_service is None:
+        if self.model is None or self.tokenizer is None:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 模型未加载，无法生成响应")
             return "模型未正确加载，请检查后端日志。"
 
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成聊天响应 - 用户ID: {user_id}, 会话ID: {session_id}, 提示: {prompt[:50]}...")
         with self.generate_lock:
             try:
-                # 对话场景：仅设置当前会话历史工具，其他工具无 context 返回空数据
-                if hasattr(self, '_session_history_tool'):
-                    self._session_history_tool.set_user_id(int(user_id))
-                    self._session_history_tool.set_session_id(session_id)
-
-                history = ChatService.get_recent_chats(int(user_id), limit=10, session_id=session_id)
-                history_text = self._format_history(history, current_prompt=prompt)
-                response = self.agent_service.chat(
-                    message=prompt,
-                    chat_history=history_text,
-                )
+                response = self._generate_chat_text(prompt, user_id, session_id=session_id)
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 聊天响应生成完成，长度: {len(response)} 字符")
                 return response or "模型未生成有效内容。"
             except RuntimeError as e:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 推理运行时错误: {str(e)}")
-                if "out of memory" in str(e).lower():
+                if torch is not None and "out of memory" in str(e).lower():
                     torch.cuda.empty_cache()
                     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 已清理CUDA缓存")
                     return "显存不足，请重试或减少上下文。"
                 return f"推理错误: {str(e)}"
             except Exception as e:
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Agent 推理异常: {str(e)}")
-                return f"Agent 推理错误: {str(e)}"
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 聊天推理异常: {str(e)}")
+                return f"聊天推理错误: {str(e)}"
 
     def generate_chat_stream(self, prompt, user_id, session_id=None):
         """
@@ -229,45 +237,15 @@ class ModelService:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 用户ID: {user_id}, 会话ID: {session_id}, 提示: {prompt[:50]}...")
         with self.generate_lock:
             try:
-                # 获取历史对话
-                history = ChatService.get_recent_chats(int(user_id), limit=10, session_id=session_id)
-                history_text = self._format_history(history, current_prompt=prompt)
-                if not history_text:
-                    history_text = "暂无历史对话。"
-
-                # 构建简洁的对话 prompt（使用 AgentService 验证过的格式）
-                if history_text and history_text != "暂无历史对话。":
-                    chat_prompt = f"""你是一个友好的AI助手，名叫智评小助手。请简洁地直接回答用户的问题。
-
-历史对话：
-{history_text}
-
-用户：{prompt}
-助手："""
-                else:
-                    chat_prompt = f"""你是一个友好的AI助手，名叫智评小助手。请简洁地直接回答用户的问题。
-
-用户：{prompt}
-助手："""
-
-                # 不使用 apply_chat_template，直接传入纯文本 prompt
-                inputs = self.tokenizer([chat_prompt], return_tensors="pt").to(self.model.device)
+                messages = self._build_current_chat_messages(prompt, user_id, session_id)
+                inputs = self._prepare_chat_inputs(messages)
 
                 from transformers import TextIteratorStreamer
                 streamer = TextIteratorStreamer(
                     self.tokenizer, skip_prompt=True, skip_special_tokens=True
                 )
 
-                generation_kwargs = dict(
-                    input_ids=inputs.input_ids,
-                    attention_mask=inputs.attention_mask,
-                    streamer=streamer,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    do_sample=True,
-                    temperature=0.3,
-                    repetition_penalty=1.2,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                )
+                generation_kwargs = self._chat_generation_kwargs(inputs, streamer=streamer)
 
                 import threading
                 thread = threading.Thread(
@@ -277,15 +255,28 @@ class ModelService:
                 thread.start()
 
                 full_response = ""
+                emitted_response = ""
+                hold_chars = 12
                 for token in streamer:
                     full_response += token
-                    yield token
+                    cleaned = self._clean_chat_response(full_response)
+                    safe_length = max(0, len(cleaned) - hold_chars)
+                    if safe_length > len(emitted_response):
+                        chunk = cleaned[len(emitted_response):safe_length]
+                        emitted_response += chunk
+                        yield chunk
 
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 流式生成完成，总长度: {len(full_response)}")
+                cleaned = self._clean_chat_response(full_response)
+                if len(cleaned) > len(emitted_response):
+                    chunk = cleaned[len(emitted_response):]
+                    emitted_response += chunk
+                    yield chunk
+
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 流式生成完成，总长度: {len(emitted_response)}")
 
             except RuntimeError as e:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 流式推理运行时错误: {str(e)}")
-                if "out of memory" in str(e).lower():
+                if torch is not None and "out of memory" in str(e).lower():
                     torch.cuda.empty_cache()
                 yield f"\n[生成错误: 显存不足，请重试]"
             except Exception as e:
@@ -344,6 +335,126 @@ class ModelService:
 
     def clear_chat_history(self, user_id):
         return None
+
+    def _build_current_chat_messages(self, prompt, user_id, session_id=None):
+        history = ChatService.get_recent_chats(
+            int(user_id),
+            limit=CHAT_HISTORY_LIMIT + 1,
+            session_id=session_id
+        )
+        return self._build_chat_messages(prompt, history)
+
+    def _build_chat_messages(self, prompt, history):
+        messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+
+        for chat in self._prepare_chat_history(history, current_prompt=prompt):
+            role = getattr(chat, "role", "")
+            if role not in {"user", "assistant"}:
+                continue
+
+            content = (getattr(chat, "content", "") or "").strip()
+            if not content:
+                continue
+
+            messages.append({
+                "role": role,
+                "content": content[:CHAT_MESSAGE_CONTEXT_CHARS],
+            })
+
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
+    def _prepare_chat_history(self, history, current_prompt=None):
+        recent_chats = list(history or [])
+        if (
+            current_prompt
+            and recent_chats
+            and getattr(recent_chats[0], "role", None) == "user"
+            and getattr(recent_chats[0], "content", None) == current_prompt
+        ):
+            recent_chats = recent_chats[1:]
+
+        return list(reversed(recent_chats[:CHAT_HISTORY_LIMIT]))
+
+    def _prepare_chat_inputs(self, messages):
+        input_text = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        inputs = self.tokenizer([input_text], return_tensors="pt")
+        model_device = getattr(self.model, "device", None)
+        if model_device is not None and hasattr(inputs, "to"):
+            inputs = inputs.to(model_device)
+        return inputs
+
+    def _chat_generation_kwargs(self, inputs, streamer=None):
+        generation_kwargs = {
+            "input_ids": inputs.input_ids,
+            "max_new_tokens": CHAT_MAX_NEW_TOKENS,
+            "do_sample": CHAT_TEMPERATURE > 0,
+            "temperature": CHAT_TEMPERATURE,
+            "top_p": CHAT_TOP_P,
+            "repetition_penalty": 1.15,
+            "pad_token_id": self.tokenizer.eos_token_id,
+        }
+
+        attention_mask = getattr(inputs, "attention_mask", None)
+        if attention_mask is not None:
+            generation_kwargs["attention_mask"] = attention_mask
+        if streamer is not None:
+            generation_kwargs["streamer"] = streamer
+
+        return generation_kwargs
+
+    def _generate_chat_text(self, prompt, user_id, session_id=None):
+        messages = self._build_current_chat_messages(prompt, user_id, session_id)
+        inputs = self._prepare_chat_inputs(messages)
+        generation_kwargs = self._chat_generation_kwargs(inputs)
+
+        inference_context = torch.inference_mode() if torch is not None else nullcontext()
+        with inference_context:
+            outputs = self.model.generate(**generation_kwargs)
+
+        input_length = inputs.input_ids.shape[1]
+        response_ids = outputs[0][input_length:]
+        response = self.tokenizer.decode(response_ids, skip_special_tokens=True)
+        return self._clean_chat_response(response)
+
+    def _clean_chat_response(self, response):
+        cleaned = (response or "").strip()
+
+        prefixes = (
+            "智评小助手：", "智评小助手:",
+            "助手：", "助手:",
+            "AI：", "AI:",
+            "Assistant:", "assistant:",
+            "Final Answer:", "final answer:",
+        )
+        changed = True
+        while changed:
+            changed = False
+            for prefix in prefixes:
+                if cleaned.startswith(prefix):
+                    cleaned = cleaned[len(prefix):].lstrip()
+                    changed = True
+
+        stop_markers = (
+            "\n用户：", "\n用户:", "\nUser:", "\nuser:",
+            "\nHuman:", "\nhuman:",
+            "\n助手：", "\n助手:",
+            "\nAssistant:", "\nassistant:",
+        )
+        cut_index = None
+        for marker in stop_markers:
+            index = cleaned.find(marker)
+            if index != -1 and (cut_index is None or index < cut_index):
+                cut_index = index
+
+        if cut_index is not None:
+            cleaned = cleaned[:cut_index]
+
+        return cleaned.strip()
 
     def _format_history(self, chats, current_prompt=None):
         if not chats:

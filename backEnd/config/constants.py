@@ -17,6 +17,20 @@ FINETUNED_MODEL_PATH = os.path.join(
 MAX_CONTEXT_CHARS = 8000
 MAX_NEW_TOKENS = 1280
 
+# 普通聊天生成配置。评估类任务仍使用 MAX_NEW_TOKENS，避免影响长文本评估输出。
+CHAT_MAX_NEW_TOKENS = 768
+CHAT_TEMPERATURE = 0.2
+CHAT_TOP_P = 0.8
+CHAT_HISTORY_LIMIT = 6
+CHAT_MESSAGE_CONTEXT_CHARS = 1200
+CHAT_SYSTEM_PROMPT = """你是“智评小助手”，面向学生的友好 AI 对话助手。
+请严格遵守以下规则：
+1. 只回答用户当前明确提出的问题。
+2. 不要脑补未说明的知识点、学科、作业内容或背景。
+3. 如果用户说某个知识没听懂但没有说明具体知识点，先共情安慰，再询问具体是哪一个知识点或哪一部分，不要直接讲解某个学科内容。
+4. 简单寒暄或情绪支持默认用 2-5 句话回答；当用户明确询问具体知识、步骤、原因或方案时，要完整回答，可以分段或列要点，不要中途停在半句话。
+5. 如果引用历史对话，只使用与当前问题直接相关的内容。"""
+
 EVALUATION_PROMPT_TEMPLATE = """
 你是一位专业的教育评估专家，要对青少年的对话进行评估，请根据以下对话内容，从四个维度对用户（user）一方的对话进行评分（0-100分）：
 

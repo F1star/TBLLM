@@ -16,6 +16,7 @@ import os
 import unittest
 import tempfile
 import shutil
+from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
 
 # 添加项目路径
@@ -155,6 +156,98 @@ class TestAdvancedAgent(unittest.TestCase):
         mock_executor.invoke.assert_called_once()
 
         print("✓ AdvancedAgent chat方法测试通过")
+
+
+class TestModelServiceChat(unittest.TestCase):
+    """普通聊天生成路径测试类"""
+
+    class FakeTensor:
+        shape = (1, 3)
+
+    class FakeInputs(dict):
+        def __init__(self):
+            self.input_ids = TestModelServiceChat.FakeTensor()
+            self.attention_mask = TestModelServiceChat.FakeTensor()
+            super().__init__(
+                input_ids=self.input_ids,
+                attention_mask=self.attention_mask
+            )
+
+        def to(self, device):
+            self.device = device
+            return self
+
+    def _make_service(self):
+        from services.model_service import ModelService
+
+        service = object.__new__(ModelService)
+        service.tokenizer = MagicMock()
+        service.tokenizer.apply_chat_template.return_value = "formatted-chat"
+        service.tokenizer.return_value = self.FakeInputs()
+        service.tokenizer.eos_token_id = 0
+        service.tokenizer.decode.return_value = "助手：好的，我先陪你把这个点找出来。\n用户：继续"
+
+        service.model = MagicMock()
+        service.model.device = "cpu"
+        service.model.generate.return_value = [[1, 2, 3, 4, 5]]
+        return service
+
+    def test_chat_text_uses_chat_template_and_chat_token_budget(self):
+        """测试普通聊天使用chat template和聊天专用token上限"""
+        from config.constants import CHAT_MAX_NEW_TOKENS, MAX_NEW_TOKENS
+
+        service = self._make_service()
+        with patch('services.model_service.ChatService.get_recent_chats', return_value=[]):
+            response = service._generate_chat_text("我有一个知识没听懂", user_id=1, session_id=2)
+
+        self.assertEqual(response, "好的，我先陪你把这个点找出来。")
+        service.tokenizer.apply_chat_template.assert_called_once()
+
+        messages = service.tokenizer.apply_chat_template.call_args.args[0]
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertIn("不要脑补未说明的知识点", messages[0]["content"])
+        self.assertEqual(messages[-1], {"role": "user", "content": "我有一个知识没听懂"})
+
+        generation_kwargs = service.model.generate.call_args.kwargs
+        self.assertEqual(generation_kwargs["max_new_tokens"], CHAT_MAX_NEW_TOKENS)
+        self.assertGreaterEqual(generation_kwargs["max_new_tokens"], 768)
+        self.assertNotEqual(generation_kwargs["max_new_tokens"], MAX_NEW_TOKENS)
+
+        print("OK 普通聊天chat template和token上限测试通过")
+
+    def test_build_chat_messages_filters_current_prompt_and_keeps_chronological_history(self):
+        """测试当前问题不重复进入历史，历史按旧到新排序"""
+        service = self._make_service()
+        history = [
+            SimpleNamespace(role="user", content="当前问题"),
+            SimpleNamespace(role="assistant", content="最近回复"),
+            SimpleNamespace(role="user", content="较早问题"),
+        ]
+
+        messages = service._build_chat_messages("当前问题", history)
+        message_contents = [message["content"] for message in messages]
+
+        self.assertEqual(message_contents[1:], ["较早问题", "最近回复", "当前问题"])
+        self.assertEqual(message_contents.count("当前问题"), 1)
+
+        print("OK 普通聊天历史过滤和排序测试通过")
+
+    def test_build_chat_messages_limits_history_count(self):
+        """测试普通聊天只保留最近指定数量的历史消息"""
+        from config.constants import CHAT_HISTORY_LIMIT
+
+        service = self._make_service()
+        history = [
+            SimpleNamespace(role="user", content=f"历史消息{i}")
+            for i in range(CHAT_HISTORY_LIMIT + 3)
+        ]
+
+        messages = service._build_chat_messages("当前问题", history)
+
+        self.assertEqual(len(messages), CHAT_HISTORY_LIMIT + 2)
+        self.assertEqual(messages[-1], {"role": "user", "content": "当前问题"})
+
+        print("OK 普通聊天历史数量限制测试通过")
 
 
 class TestEnhancedToolFactory(unittest.TestCase):
@@ -313,6 +406,7 @@ def run_tests():
     # 添加测试类
     suite.addTest(unittest.makeSuite(TestVectorStore))
     suite.addTest(unittest.makeSuite(TestAdvancedAgent))
+    suite.addTest(unittest.makeSuite(TestModelServiceChat))
     suite.addTest(unittest.makeSuite(TestEnhancedToolFactory))
     suite.addTest(unittest.makeSuite(TestRAGService))
     suite.addTest(unittest.makeSuite(TestIntegration))

@@ -90,8 +90,11 @@
           <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <div class="message-content">
-          <div v-if="msg.role === 'assistant' && index === streamingIndex" class="message-text streaming-text">{{ msg.content }}</div>
-          <div v-else-if="msg.role === 'assistant'" class="message-text" v-html="renderMarkdown(msg.content)"></div>
+          <div
+            v-if="msg.role === 'assistant'"
+            :class="['message-text', 'markdown-text', { 'streaming-text': index === streamingIndex }]"
+            v-html="renderMarkdown(msg.content)"
+          ></div>
           <div class="message-text" v-else>{{ msg.content }}</div>
           <div class="message-time">{{ msg.time }}</div>
         </div>
@@ -720,11 +723,12 @@ onMounted(() => {
   border: 1px solid rgba(255,255,255,0.08);
   color: #e8eaed;
   border-bottom-left-radius: 4px;
+  white-space: normal;
 }
 
 .message.assistant .message-text :deep(p) {
-  margin-bottom: 8px;
-  line-height: 1.7;
+  margin: 0 0 0.55em;
+  line-height: 1.6;
 }
 
 .message.assistant .message-text :deep(p:last-child) {
@@ -752,7 +756,7 @@ onMounted(() => {
 }
 
 .message.assistant .message-text :deep(pre) {
-  margin: 8px 0;
+  margin: 0.65em 0;
   padding: 12px 16px;
   background: rgba(0,0,0,0.3);
   border: 1px solid rgba(255,255,255,0.06);
@@ -771,17 +775,21 @@ onMounted(() => {
 
 .message.assistant .message-text :deep(ul),
 .message.assistant .message-text :deep(ol) {
-  margin: 8px 0;
+  margin: 0.45em 0 0.65em;
   padding-left: 20px;
 }
 
 .message.assistant .message-text :deep(li) {
-  margin-bottom: 4px;
-  line-height: 1.7;
+  margin: 0.18em 0;
+  line-height: 1.6;
+}
+
+.message.assistant .message-text :deep(li > p) {
+  margin: 0.2em 0;
 }
 
 .message.assistant .message-text :deep(blockquote) {
-  margin: 8px 0;
+  margin: 0.65em 0;
   padding: 8px 14px;
   border-left: 3px solid rgba(0,229,255,0.3);
   background: rgba(0,229,255,0.03);
@@ -793,9 +801,10 @@ onMounted(() => {
 .message.assistant .message-text :deep(h2),
 .message.assistant .message-text :deep(h3),
 .message.assistant .message-text :deep(h4) {
-  margin: 12px 0 6px;
+  margin: 0.9em 0 0.35em;
   color: #e8eaed;
   font-weight: 600;
+  line-height: 1.35;
 }
 
 .message.assistant .message-text :deep(h1) { font-size: 16px; }
@@ -806,7 +815,7 @@ onMounted(() => {
 .message.assistant .message-text :deep(table) {
   width: 100%;
   border-collapse: collapse;
-  margin: 8px 0;
+  margin: 0.65em 0;
   font-size: 12px;
 }
 
@@ -838,22 +847,31 @@ onMounted(() => {
 }
 
 .message.assistant .message-text :deep(hr) {
-  margin: 12px 0;
+  margin: 0.8em 0;
   border: none;
   border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 .streaming-text {
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
 .streaming-text::after {
+  content: none;
+}
+
+.streaming-text:empty::after,
+.streaming-text :deep(p:last-child)::after,
+.streaming-text :deep(li:last-child)::after {
   content: '▊';
   display: inline;
   animation: cursorBlink 1s step-end infinite;
   color: #00e5ff;
   margin-left: 2px;
+}
+
+.streaming-text :deep(li:last-child p:last-child)::after {
+  content: none;
 }
 
 @keyframes cursorBlink {
