@@ -173,7 +173,7 @@ const loadSessions = async () => {
   if (!token) return false
   sessionsLoading.value = true
   try {
-    const res = await fetch('http://localhost:5000/api/sessions', {
+    const res = await fetch('http://localhost:5050/api/sessions', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     if (res.ok) { sessions.value = await res.json(); return true }
@@ -192,7 +192,7 @@ const createNewSession = async () => {
   const token = getToken()
   const name = prompt('请输入会话名称（可选）:') || ''
   try {
-    const res = await fetch('http://localhost:5000/api/sessions', {
+    const res = await fetch('http://localhost:5050/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ name })
@@ -210,7 +210,7 @@ const loadHistory = async () => {
   if (!token) { alert('请先登录'); return }
   loading.value = true
   try {
-    let url = 'http://localhost:5000/api/chat/history'
+    let url = 'http://localhost:5050/api/chat/history'
     if (currentSession.value) url += `?session_id=${currentSession.value.id}`
     const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
     if (!res.ok) throw new Error('获取失败')
@@ -226,7 +226,7 @@ const clearHistory = async () => {
   try {
     const body = {}
     if (currentSession.value) body.session_id = currentSession.value.id
-    const res = await fetch('http://localhost:5000/api/chat/clear', {
+    const res = await fetch('http://localhost:5050/api/chat/clear', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -251,7 +251,7 @@ const evaluateMessage = async (msg) => {
   const token = getToken()
   msg.evaluating = true
   try {
-    const res = await fetch('http://localhost:5000/api/evaluate', {
+    const res = await fetch('http://localhost:5050/api/evaluate', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: msg.id })

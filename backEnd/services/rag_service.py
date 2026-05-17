@@ -218,23 +218,44 @@ class RAGService:
         if not query_terms:
             return []
 
-        scored_chunks = []
+        candidate_chunks = []
         for file in files:
             content = FileService.parse_file(file.filepath, user_id)
             for index, chunk in enumerate(self._split_text(content)):
-                score = self._score_chunk(chunk, query_terms)
-                if score <= 0:
-                    continue
-                scored_chunks.append(
+                candidate_chunks.append(
                     {
                         "file_id": file.id,
                         "filename": file.filename,
                         "chunk_index": index,
-                        "score": score,
                         "content": chunk,
-                        "retrieval_method": "keyword"
                     }
                 )
+
+        document_frequency = Counter()
+        for item in candidate_chunks:
+            chunk_terms = set(self._tokenize(item["content"]))
+            for term in query_terms:
+                if term in chunk_terms:
+                    document_frequency[term] += 1
+
+        total_chunks = len(candidate_chunks)
+        scored_chunks = []
+        for item in candidate_chunks:
+            score = self._score_chunk(
+                item["content"],
+                query_terms,
+                document_frequency,
+                total_chunks,
+            )
+            if score <= 0:
+                continue
+            scored_chunks.append(
+                {
+                    **item,
+                    "score": score,
+                    "retrieval_method": "keyword",
+                }
+            )
 
         scored_chunks.sort(key=lambda item: item["score"], reverse=True)
         logger.debug(f"关键词检索到 {len(scored_chunks[:top_k])} 个相关片段")
@@ -327,7 +348,13 @@ class RAGService:
     def _tokenize(self, text: str) -> List[str]:
         return [token for token in re.findall(r"[\w\u4e00-\u9fff]+", text.lower()) if token]
 
-    def _score_chunk(self, chunk: str, query_terms: List[str]) -> float:
+    def _score_chunk(
+        self,
+        chunk: str,
+        query_terms: List[str],
+        document_frequency: Optional[Counter] = None,
+        total_chunks: int = 0,
+    ) -> float:
         chunk_terms = self._tokenize(chunk)
         if not chunk_terms:
             return 0.0
@@ -336,7 +363,12 @@ class RAGService:
         score = 0.0
         for term in query_terms:
             if term in counts:
-                score += counts[term] / math.sqrt(len(chunk_terms))
+                tf = counts[term] / len(chunk_terms)
+                if document_frequency is not None and total_chunks > 0:
+                    idf = math.log((total_chunks + 1) / (document_frequency.get(term, 0) + 1)) + 1
+                else:
+                    idf = 1.0
+                score += tf * idf
         return score
 
     def delete_file_from_vector_store(self, user_id: int, file_id: int) -> bool:

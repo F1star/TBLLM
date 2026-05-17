@@ -119,7 +119,7 @@ export default {
           return;
         }
         this.loading = true;
-        const response = await axios.post('http://localhost:5000/api/register', {
+        const response = await axios.post('http://localhost:5050/api/register', {
           username: this.form.username, email: this.form.email, password: this.form.password
         });
         this.success = response.data.message;

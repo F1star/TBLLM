@@ -1,5 +1,7 @@
 import threading
 import logging
+import os
+import re
 from contextlib import nullcontext
 from datetime import datetime
 
@@ -14,12 +16,13 @@ except Exception as e:
 
 # 尝试导入transformers，如果失败则设置为None
 try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
     TRANSFORMERS_AVAILABLE = True
 except Exception as e:
     print(f"[Warning] 无法导入transformers: {e}")
     AutoModelForCausalLM = None
     AutoTokenizer = None
+    TextIteratorStreamer = None
     TRANSFORMERS_AVAILABLE = False
 
 from config.constants import (
@@ -82,16 +85,37 @@ class ModelService:
             return
 
         try:
-            # 先尝试使用CPU加载，避免内存不足问题
+            # 根据环境变量选择设备；mac 启动脚本会设置 TBLLM_DEVICE=mps。
+            requested_device = os.environ.get("TBLLM_DEVICE", "auto").strip().lower()
             use_cuda = torch.cuda.is_available()
+            use_mps = (
+                hasattr(torch.backends, "mps")
+                and torch.backends.mps.is_available()
+            )
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] CUDA 可用: {use_cuda}")
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] MPS 可用: {use_mps}")
 
-            # 优先使用CPU以避免内存问题
             force_cpu = False  # 不强制使用CPU，尝试使用CUDA
-            if use_cuda and not force_cpu:
+            if requested_device == "mps" and use_mps and not force_cpu:
+                device = "mps"
+                dtype = torch.float16
+                device_map = None
+            elif requested_device == "cuda" and use_cuda and not force_cpu:
                 device = "cuda"
                 dtype = torch.float16
                 device_map = "auto"
+            elif requested_device == "cpu" or force_cpu:
+                device = "cpu"
+                dtype = torch.float32
+                device_map = "cpu"
+            elif use_cuda and not force_cpu:
+                device = "cuda"
+                dtype = torch.float16
+                device_map = "auto"
+            elif use_mps and not force_cpu:
+                device = "mps"
+                dtype = torch.float16
+                device_map = None
             else:
                 device = "cpu"
                 dtype = torch.float32
@@ -110,12 +134,17 @@ class ModelService:
             # 2️⃣ 加载 base model
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 加载基础模型...")
 
+            model_kwargs = {
+                "torch_dtype": dtype,
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+            }
+            if device_map is not None:
+                model_kwargs["device_map"] = device_map
+
             base_model = AutoModelForCausalLM.from_pretrained(
                 ORIGINAL_MODEL_PATH,
-                dtype=torch.float16 if device == "cuda" else torch.float32,
-                device_map="auto",
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,
+                **model_kwargs,
             )
 
             # 3️⃣ 如果有 LoRA，就加载
@@ -125,6 +154,9 @@ class ModelService:
             else:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 未使用LoRA，直接使用基础模型")
                 self.model = base_model
+
+            if device == "mps":
+                self.model = self.model.to("mps")
 
             # 4️⃣ 设置推理模式
             self.model.eval()
@@ -181,16 +213,28 @@ class ModelService:
         )
 
         # 创建工具实例（后续通过 setter 注入 user_id / session_id）
-        from services.agent_tools_enhanced import FileSummaryTool, SessionHistoryTool, AllSessionsHistoryTool
+        from services.agent_tools_enhanced import (
+            DocumentRetrievalTool,
+            FileSummaryTool,
+            SessionHistoryTool,
+            AllSessionsHistoryTool,
+        )
+        from services.rag_service import RAGService
+
         self._file_summary_tool = FileSummaryTool()
         self._session_history_tool = SessionHistoryTool()
         self._all_history_tool = AllSessionsHistoryTool()
+        self._document_retrieval_tool = DocumentRetrievalTool(
+            rag_service=RAGService(),
+            user_id=0,
+        )
 
         # 单Agent，包含所有工具
         tools = [
             self._file_summary_tool,
             self._session_history_tool,
             self._all_history_tool,
+            self._document_retrieval_tool,
         ]
 
         advanced_agent = AdvancedAgent(
@@ -210,13 +254,16 @@ class ModelService:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成聊天响应 - 用户ID: {user_id}, 会话ID: {session_id}, 提示: {prompt[:50]}...")
         with self.generate_lock:
             try:
-                response = self._generate_chat_text(prompt, user_id, session_id=session_id)
+                response = self._generate_chat_text_unlocked(prompt, user_id, session_id=session_id)
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 聊天响应生成完成，长度: {len(response)} 字符")
                 return response or "模型未生成有效内容。"
             except RuntimeError as e:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 推理运行时错误: {str(e)}")
                 if torch is not None and "out of memory" in str(e).lower():
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                        torch.mps.empty_cache()
                     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 已清理CUDA缓存")
                     return "显存不足，请重试或减少上下文。"
                 return f"推理错误: {str(e)}"
@@ -235,49 +282,59 @@ class ModelService:
             return
 
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 用户ID: {user_id}, 会话ID: {session_id}, 提示: {prompt[:50]}...")
+        if TextIteratorStreamer is None:
+            yield "流式生成组件不可用，请检查 transformers 安装。"
+            return
+
         with self.generate_lock:
             try:
                 messages = self._build_current_chat_messages(prompt, user_id, session_id)
                 inputs = self._prepare_chat_inputs(messages)
-
-                from transformers import TextIteratorStreamer
                 streamer = TextIteratorStreamer(
-                    self.tokenizer, skip_prompt=True, skip_special_tokens=True
+                    self.tokenizer,
+                    skip_prompt=True,
+                    skip_special_tokens=True,
+                    timeout=10,
                 )
-
                 generation_kwargs = self._chat_generation_kwargs(inputs, streamer=streamer)
 
-                import threading
-                thread = threading.Thread(
-                    target=self.model.generate,
-                    kwargs=generation_kwargs,
-                )
-                thread.start()
+                generation_error = []
 
-                full_response = ""
+                def run_generation():
+                    try:
+                        inference_context = torch.inference_mode() if torch is not None else nullcontext()
+                        with inference_context:
+                            self.model.generate(**generation_kwargs)
+                    except Exception as exc:
+                        generation_error.append(exc)
+
+                generation_thread = threading.Thread(target=run_generation)
+                generation_thread.start()
+
+                raw_response = ""
                 emitted_response = ""
-                hold_chars = 12
                 for token in streamer:
-                    full_response += token
-                    cleaned = self._clean_chat_response(full_response)
-                    safe_length = max(0, len(cleaned) - hold_chars)
-                    if safe_length > len(emitted_response):
-                        chunk = cleaned[len(emitted_response):safe_length]
-                        emitted_response += chunk
-                        yield chunk
+                    raw_response += token
+                    cleaned_snapshot = self._clean_chat_response_stream_snapshot(raw_response)
+                    if len(cleaned_snapshot) <= len(emitted_response):
+                        continue
+                    delta = cleaned_snapshot[len(emitted_response):]
+                    emitted_response = cleaned_snapshot
+                    if delta:
+                        yield delta
 
-                cleaned = self._clean_chat_response(full_response)
-                if len(cleaned) > len(emitted_response):
-                    chunk = cleaned[len(emitted_response):]
-                    emitted_response += chunk
-                    yield chunk
+                generation_thread.join()
+                if generation_error:
+                    raise generation_error[0]
 
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 流式生成完成，总长度: {len(emitted_response)}")
-
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] generate_chat_stream - 生成完成，总长度: {len(emitted_response)}")
             except RuntimeError as e:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 流式推理运行时错误: {str(e)}")
                 if torch is not None and "out of memory" in str(e).lower():
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                        torch.mps.empty_cache()
                 yield f"\n[生成错误: 显存不足，请重试]"
             except Exception as e:
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 流式推理异常: {str(e)}")
@@ -291,12 +348,17 @@ class ModelService:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 生成能力评估 - 聊天历史长度: {len(chat_history_text)}, 文件上下文长度: {len(file_context_text)}, 用户ID: {user_id}, 深度思考: {deep_mode}")
         with self.generate_lock:
             try:
-                # 评估场景：仅设置全部会话历史工具和文件总结工具
+                # 评估场景：为证据收集工具注入当前用户上下文
                 if user_id is not None:
                     if hasattr(self, '_all_history_tool'):
                         self._all_history_tool.set_user_id(int(user_id))
                     if hasattr(self, '_file_summary_tool'):
                         self._file_summary_tool.set_user_id(int(user_id))
+                    if hasattr(self, '_session_history_tool'):
+                        self._session_history_tool.set_user_id(int(user_id))
+                        self._session_history_tool.set_session_id(None)
+                    if hasattr(self, '_document_retrieval_tool'):
+                        self._document_retrieval_tool.set_user_id(int(user_id))
 
                 result = self.agent_service.evaluate(
                     chat_history=chat_history_text,
@@ -353,6 +415,7 @@ class ModelService:
                 continue
 
             content = (getattr(chat, "content", "") or "").strip()
+            content = self._strip_meta_parentheticals(content)
             if not content:
                 continue
 
@@ -408,6 +471,10 @@ class ModelService:
         return generation_kwargs
 
     def _generate_chat_text(self, prompt, user_id, session_id=None):
+        with self.generate_lock:
+            return self._generate_chat_text_unlocked(prompt, user_id, session_id=session_id)
+
+    def _generate_chat_text_unlocked(self, prompt, user_id, session_id=None):
         messages = self._build_current_chat_messages(prompt, user_id, session_id)
         inputs = self._prepare_chat_inputs(messages)
         generation_kwargs = self._chat_generation_kwargs(inputs)
@@ -419,9 +486,44 @@ class ModelService:
         input_length = inputs.input_ids.shape[1]
         response_ids = outputs[0][input_length:]
         response = self.tokenizer.decode(response_ids, skip_special_tokens=True)
-        return self._clean_chat_response(response)
+        return self._clean_chat_response(response, prompt=prompt)
 
-    def _clean_chat_response(self, response):
+    def _clean_chat_response_stream_snapshot(self, response):
+        cleaned = (response or "").lstrip()
+
+        prefixes = (
+            "智评小助手：", "智评小助手:",
+            "助手：", "助手:",
+            "AI：", "AI:",
+            "Assistant:", "assistant:",
+            "Final Answer:", "final answer:",
+        )
+        changed = True
+        while changed:
+            changed = False
+            for prefix in prefixes:
+                if cleaned.startswith(prefix):
+                    cleaned = cleaned[len(prefix):].lstrip()
+                    changed = True
+
+        stop_markers = (
+            "\n用户：", "\n用户:", "\nUser:", "\nuser:",
+            "\nHuman:", "\nhuman:",
+            "\n助手：", "\n助手:",
+            "\nAssistant:", "\nassistant:",
+        )
+        cut_index = None
+        for marker in stop_markers:
+            index = cleaned.find(marker)
+            if index != -1 and (cut_index is None or index < cut_index):
+                cut_index = index
+
+        if cut_index is not None:
+            cleaned = cleaned[:cut_index]
+
+        return self._strip_meta_parentheticals(cleaned)
+
+    def _clean_chat_response(self, response, prompt=None):
         cleaned = (response or "").strip()
 
         prefixes = (
@@ -454,7 +556,93 @@ class ModelService:
         if cut_index is not None:
             cleaned = cleaned[:cut_index]
 
+        cleaned = self._strip_meta_parentheticals(cleaned)
+        return self._enforce_progressive_chat_style(cleaned.strip(), prompt=prompt)
+
+    def _strip_meta_parentheticals(self, text):
+        """移除模型泄露出的括号式内部说明，保留正常回答内容。"""
+        if not text:
+            return text
+
+        meta_terms = (
+            "不需回答", "无需回答", "不要回答", "不用回答",
+            "如果学生", "当学生", "学生在等待", "进一步指导",
+            "请礼貌", "请给出", "请提出", "请回答",
+            "系统", "提示", "备注", "注：", "说明",
+            "内部", "元说明", "写作意图", "对话策略", "回复策略",
+            "供参考", "模型", "指令",
+        )
+        term_pattern = "|".join(re.escape(term) for term in meta_terms)
+        patterns = (
+            rf"（[^（）]{{0,180}}(?:{term_pattern})[^（）]{{0,180}}）",
+            rf"\([^()]{{0,180}}(?:{term_pattern})[^()]{{0,180}}\)",
+        )
+
+        cleaned = text
+        changed = True
+        while changed:
+            changed = False
+            for pattern in patterns:
+                cleaned_next = re.sub(pattern, "", cleaned)
+                if cleaned_next != cleaned:
+                    cleaned = cleaned_next
+                    changed = True
+
+        cleaned = re.sub(r"\s+([，。！？；：])", r"\1", cleaned)
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned.strip()
+
+    def _enforce_progressive_chat_style(self, response, prompt=None):
+        """只做最小清理：保留模型回答，但截掉问卷式追问。"""
+        if not response:
+            return response
+
+        cleaned = self._strip_meta_parentheticals(response)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        question_count = cleaned.count("？") + cleaned.count("?")
+        bullet_question_count = len(re.findall(r"(?m)^\s*(?:[-*]|\d+[.、)])\s*.*[？?]", cleaned))
+
+        if question_count <= 1 and bullet_question_count == 0 and len(cleaned) <= 700:
+            return cleaned
+
+        if self._looks_like_questionnaire(cleaned):
+            return self._trim_questionnaire_response(cleaned)
+
+        if question_count > 1:
+            cleaned = self._keep_until_first_question(cleaned)
+
+        if len(cleaned) > 700:
+            cleaned = cleaned[:700].rstrip()
+            cleaned = re.sub(r"[，,；;：:、-]*$", "。", cleaned)
+
+        return cleaned.strip()
+
+    def _looks_like_questionnaire(self, text):
+        question_count = text.count("？") + text.count("?")
+        numbered_items = len(re.findall(r"(?m)(?:^|\n)\s*\d+[.、)]", text))
+        personal_info_terms = ("年龄", "性别", "出生", "父母", "职业", "教育水平")
+        return (
+            question_count >= 3
+            or numbered_items >= 4
+            or sum(1 for term in personal_info_terms if term in text) >= 2
+            or len(text) > 1200
+        )
+
+    def _trim_questionnaire_response(self, text):
+        paragraphs = [item.strip() for item in re.split(r"\n\s*\n", text) if item.strip()]
+        if paragraphs:
+            first = paragraphs[0]
+            if len(first) <= 700 and (first.count("？") + first.count("?")) <= 1:
+                return first
+
+        return self._keep_until_first_question(text)[:700].strip()
+
+    def _keep_until_first_question(self, text):
+        match = re.search(r"[？?]", text)
+        if not match:
+            return text
+        return text[:match.end()].strip()
 
     def _format_history(self, chats, current_prompt=None):
         if not chats:
@@ -508,8 +696,9 @@ class ModelService:
 
             with self.generate_lock:
                 inputs = self.tokenizer(prompt, return_tensors="pt")
-                if self.model.device.type == "cuda":
-                    inputs = inputs.to("cuda")
+                model_device = getattr(self.model, "device", None)
+                if model_device is not None and hasattr(inputs, "to"):
+                    inputs = inputs.to(model_device)
 
                 with torch.no_grad():
                     outputs = self.model.generate(

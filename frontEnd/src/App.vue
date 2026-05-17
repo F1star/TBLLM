@@ -115,8 +115,8 @@
                   <div class="evaluation-footer">
                     <span class="evaluation-time">评分时间：{{ formatTime(latestEvaluation.timestamp) }}</span>
                     <div class="eval-actions">
-                      <label class="deep-toggle" title="使用 ReAct 深度分析所有会话和文件后再评分">
-                        <span class="toggle-label">深度思考</span>
+                      <label class="deep-toggle" title="开启后会使用 ReAct 和本地向量检索增强评估">
+                        <span class="toggle-label">证据增强</span>
                         <input type="checkbox" v-model="deepMode">
                         <span class="toggle-switch"></span>
                       </label>
@@ -135,8 +135,8 @@
                   </div>
                   <p>暂无评分记录</p>
                   <div class="eval-actions" style="justify-content:center;">
-                    <label class="deep-toggle" title="使用 ReAct 深度分析所有会话和文件后再评分">
-                      <span class="toggle-label">深度思考</span>
+                    <label class="deep-toggle" title="开启后会使用 ReAct 和本地向量检索增强评估">
+                      <span class="toggle-label">证据增强</span>
                       <input type="checkbox" v-model="deepMode">
                       <span class="toggle-switch"></span>
                     </label>
@@ -400,7 +400,7 @@ export default {
       const token = localStorage.getItem('token');
       if (!token) return;
       try {
-        const res = await fetch('http://localhost:5000/api/evaluation/latest', {
+        const res = await fetch('http://localhost:5050/api/evaluation/latest', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) this.latestEvaluation = await res.json();
@@ -411,7 +411,7 @@ export default {
       if (!token) return;
       this.isEvaluating = true;
       try {
-        const res = await fetch('http://localhost:5000/api/evaluate', {
+        const res = await fetch('http://localhost:5050/api/evaluate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ file_ids: this.fileIds, deep_mode: this.deepMode })
@@ -443,7 +443,7 @@ export default {
       this.isChangingPassword = true;
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/change-password', {
+        const res = await fetch('http://localhost:5050/api/change-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ current_password: this.passwordForm.currentPassword, new_password: this.passwordForm.newPassword })

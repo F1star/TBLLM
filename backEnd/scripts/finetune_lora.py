@@ -45,68 +45,146 @@ logger = logging.getLogger(__name__)
 GLOBAL_TOKENIZER = None
 GLOBAL_MAX_LENGTH = None
 
+def _env_bool(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+def _env_int(name, default):
+    value = os.environ.get(name)
+    return int(value) if value not in (None, "") else default
+
+def _env_float(name, default):
+    value = os.environ.get(name)
+    return float(value) if value not in (None, "") else default
+
+def _env_optional_int(name, default):
+    value = os.environ.get(name)
+    if value in (None, ""):
+        return default
+    if value.strip().lower() in {"none", "null", "-1"}:
+        return None
+    return int(value)
+
+def _env_list(name, default):
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+def _env_path(name, default):
+    value = os.environ.get(name, default)
+    if os.path.isabs(value):
+        return value
+    return os.path.join(PROJECT_ROOT, value)
+
+def _torch_dtype(dtype_name):
+    normalized = str(dtype_name).strip().lower()
+    if normalized in {"fp16", "float16", "half"}:
+        return torch.float16
+    if normalized in {"bf16", "bfloat16"}:
+        return torch.bfloat16
+    return torch.float32
+
+def _config_snapshot(config, device):
+    return {
+        "device": device,
+        "test_mode": config.test_mode,
+        "base_model_path": config.base_model_path,
+        "output_model_path": config.output_model_path,
+        "checkpoint_dir": config.checkpoint_dir,
+        "lora_output_path": config.lora_output_path,
+        "train_data_path": config.train_data_path,
+        "val_data_path": config.val_data_path,
+        "model_dtype": config.model_dtype,
+        "lora_r": config.lora_r,
+        "lora_alpha": config.lora_alpha,
+        "lora_dropout": config.lora_dropout,
+        "lora_target_modules": config.lora_target_modules,
+        "num_train_epochs": config.num_train_epochs,
+        "per_device_train_batch_size": config.per_device_train_batch_size,
+        "per_device_eval_batch_size": config.per_device_eval_batch_size,
+        "gradient_accumulation_steps": config.gradient_accumulation_steps,
+        "effective_train_batch_size": config.per_device_train_batch_size * config.gradient_accumulation_steps,
+        "warmup_steps": config.warmup_steps,
+        "learning_rate": config.learning_rate,
+        "weight_decay": config.weight_decay,
+        "max_seq_length": config.max_seq_length,
+        "gradient_checkpointing": config.gradient_checkpointing,
+        "optim": config.optim,
+        "use_4bit": config.use_4bit,
+    }
+
 # 配置参数
 class Config:
     # 测试模式（快速验证）
-    test_mode = True  # 设置为True进行快速测试
+    test_mode = _env_bool("LORA_TEST_MODE", True)  # 设置为True进行快速测试
+    device = os.environ.get("LORA_DEVICE", os.environ.get("TBLLM_DEVICE", "auto")).strip().lower()
+    model_dtype = os.environ.get("LORA_MODEL_DTYPE", "float16").strip().lower()
 
     # 模型路径
-    base_model_path = "models/Qwen1.5-1.8B-Chat"
-    output_model_path = "models/Qwen1.5-1.8B-Chat-finetuned"
+    base_model_path = _env_path("LORA_BASE_MODEL_PATH", "models/Qwen1.5-1.8B-Chat")
+    output_model_path = _env_path("LORA_OUTPUT_MODEL_PATH", "models/Qwen1.5-1.8B-Chat-finetuned")
+    checkpoint_dir = _env_path("LORA_CHECKPOINT_DIR", "lora_checkpoints")
+    lora_output_path = _env_path("LORA_OUTPUT_PATH", "lora_weights")
 
     # 数据路径 - 问卷数据集
-    train_data_path = "datasets/questionnaire_dialogue_train.json"
-    val_data_path = "datasets/questionnaire_dialogue_val.json"
+    train_data_path = _env_path("LORA_TRAIN_DATA_PATH", "datasets/questionnaire_dialogue_train.json")
+    val_data_path = _env_path("LORA_VAL_DATA_PATH", "datasets/questionnaire_dialogue_val.json")
 
     # LoRA配置
-    lora_r = 16  # LoRA秩
-    lora_alpha = 32  # LoRA alpha参数
-    lora_dropout = 0.1
-    lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    lora_r = _env_int("LORA_R", 16)  # LoRA秩
+    lora_alpha = _env_int("LORA_ALPHA", 32)  # LoRA alpha参数
+    lora_dropout = _env_float("LORA_DROPOUT", 0.1)
+    lora_target_modules = _env_list(
+        "LORA_TARGET_MODULES",
+        ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    )
 
     # 训练参数 - 根据测试模式调整
     if test_mode:
-        num_train_epochs = 0.01  # 非常小的epoch进行快速测试
-        per_device_train_batch_size = 1  # 更小的批大小以适应4GB GPU
-        per_device_eval_batch_size = 1
-        gradient_accumulation_steps = 16  # 有效批大小 = 1 * 16 = 16，减少显存峰值
-        warmup_steps = 10
-        learning_rate = 2e-4
-        logging_steps = 5
-        save_steps = 20
-        eval_steps = 20
-        save_total_limit = 1
-        max_steps = 20  # 最大训练步数
+        num_train_epochs = _env_float("LORA_NUM_TRAIN_EPOCHS", 0.01)  # 非常小的epoch进行快速测试
+        per_device_train_batch_size = _env_int("LORA_TRAIN_BATCH_SIZE", 1)
+        per_device_eval_batch_size = _env_int("LORA_EVAL_BATCH_SIZE", 1)
+        gradient_accumulation_steps = _env_int("LORA_GRAD_ACCUM_STEPS", 16)
+        warmup_steps = _env_int("LORA_WARMUP_STEPS", 10)
+        learning_rate = _env_float("LORA_LEARNING_RATE", 2e-4)
+        logging_steps = _env_int("LORA_LOGGING_STEPS", 5)
+        save_steps = _env_int("LORA_SAVE_STEPS", 20)
+        eval_steps = _env_int("LORA_EVAL_STEPS", 20)
+        save_total_limit = _env_int("LORA_SAVE_TOTAL_LIMIT", 1)
+        max_steps = _env_optional_int("LORA_MAX_STEPS", 20)
     else:
-        num_train_epochs = 3  # 完整训练3个epoch
-        per_device_train_batch_size = 2  # 根据4GB GPU内存调整
-        per_device_eval_batch_size = 2
-        gradient_accumulation_steps = 8  # 有效批大小 = 2 * 8 = 16
-        warmup_steps = 100
-        learning_rate = 2e-4
-        logging_steps = 10
-        save_steps = 500
-        eval_steps = 500
-        save_total_limit = 3
-        max_steps = None  # 不使用max_steps
+        num_train_epochs = _env_float("LORA_NUM_TRAIN_EPOCHS", 3)
+        per_device_train_batch_size = _env_int("LORA_TRAIN_BATCH_SIZE", 2)
+        per_device_eval_batch_size = _env_int("LORA_EVAL_BATCH_SIZE", 2)
+        gradient_accumulation_steps = _env_int("LORA_GRAD_ACCUM_STEPS", 8)
+        warmup_steps = _env_int("LORA_WARMUP_STEPS", 100)
+        learning_rate = _env_float("LORA_LEARNING_RATE", 2e-4)
+        logging_steps = _env_int("LORA_LOGGING_STEPS", 10)
+        save_steps = _env_int("LORA_SAVE_STEPS", 500)
+        eval_steps = _env_int("LORA_EVAL_STEPS", 500)
+        save_total_limit = _env_int("LORA_SAVE_TOTAL_LIMIT", 3)
+        max_steps = _env_optional_int("LORA_MAX_STEPS", None)
 
-    weight_decay = 0.01
-    fp16 = True  # 使用半精度
-    bf16 = False  # 如果GPU支持BF16可以开启
+    weight_decay = _env_float("LORA_WEIGHT_DECAY", 0.01)
+    fp16 = _env_bool("LORA_TRAINER_FP16", True)  # CUDA AMP；macOS MPS脚本会关闭
+    bf16 = _env_bool("LORA_TRAINER_BF16", False)
 
     # 优化器
-    optim = "adamw_torch"
+    optim = os.environ.get("LORA_OPTIM", "adamw_torch")
 
     # 序列长度 - 根据问卷数据调整，降低以减少显存
-    max_seq_length = 1024
+    max_seq_length = _env_int("LORA_MAX_SEQ_LENGTH", 1024)
 
     # 其他
-    gradient_checkpointing = True  # 节省显存
-    report_to = "none"  # 不报告到wandb等
+    gradient_checkpointing = _env_bool("LORA_GRADIENT_CHECKPOINTING", True)
+    report_to = os.environ.get("LORA_REPORT_TO", "none")
     # 量化配置
-    use_4bit = True  # 使用4位量化
-    gpu_max_memory = "3GB"  # GPU最大内存限制
-    cpu_max_memory = "10GB"  # CPU最大内存限制
+    use_4bit = _env_bool("LORA_USE_4BIT", True)
+    gpu_max_memory = os.environ.get("LORA_GPU_MAX_MEMORY", "3GB")
+    cpu_max_memory = os.environ.get("LORA_CPU_MAX_MEMORY", "10GB")
 
 def load_dataset(file_path):
     """加载JSON格式的数据集，支持system/human/assistant角色"""
@@ -213,19 +291,53 @@ def main():
     logger.info("=" * 60)
 
     config = Config()
+    torch.set_float32_matmul_precision(os.environ.get("LORA_MATMUL_PRECISION", "high"))
 
-    # 检查CUDA是否可用
-    if not torch.cuda.is_available():
-        logger.error("CUDA不可用，请检查GPU环境")
+    use_cuda = torch.cuda.is_available()
+    use_mps = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+    requested_device = config.device
+
+    if requested_device == "cuda" and not use_cuda:
+        logger.error("已请求CUDA训练，但CUDA不可用")
+        sys.exit(1)
+    if requested_device == "mps" and not use_mps:
+        logger.error("已请求MPS训练，但当前PyTorch未检测到Apple Silicon MPS")
         sys.exit(1)
 
-    logger.info(f"CUDA可用，设备: {torch.cuda.get_device_name(0)}")
-    logger.info(f"GPU内存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+    if requested_device == "cuda" or (requested_device == "auto" and use_cuda):
+        device = "cuda"
+    elif requested_device == "mps" or (requested_device == "auto" and use_mps):
+        device = "mps"
+    else:
+        device = "cpu"
 
-    # 设置CUDA内存分配配置以减少碎片
-    import os
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    logger.info("已设置PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True")
+    logger.info(f"训练设备: {device}")
+    if device == "cuda":
+        logger.info(f"CUDA设备: {torch.cuda.get_device_name(0)}")
+        logger.info(f"GPU内存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+        logger.info(f"PYTORCH_CUDA_ALLOC_CONF={os.environ.get('PYTORCH_CUDA_ALLOC_CONF')}")
+    elif device == "mps":
+        logger.info("Apple Silicon MPS训练模式：禁用bitsandbytes 4-bit量化，使用统一内存")
+        logger.info(f"PYTORCH_MPS_HIGH_WATERMARK_RATIO={os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO', 'default')}")
+        logger.info(f"PYTORCH_MPS_LOW_WATERMARK_RATIO={os.environ.get('PYTORCH_MPS_LOW_WATERMARK_RATIO', 'default')}")
+    else:
+        logger.warning("未检测到CUDA/MPS，将使用CPU训练，速度会很慢")
+
+    if device != "cuda" and (config.fp16 or config.bf16):
+        logger.warning("Trainer混合精度主要面向CUDA，当前设备将关闭fp16/bf16训练参数")
+        config.fp16 = False
+        config.bf16 = False
+
+    logger.info(
+        "训练配置: "
+        f"test_mode={config.test_mode}, dtype={config.model_dtype}, "
+        f"seq_len={config.max_seq_length}, batch={config.per_device_train_batch_size}, "
+        f"grad_accum={config.gradient_accumulation_steps}, lr={config.learning_rate}, "
+        f"epochs={config.num_train_epochs}, max_steps={config.max_steps}"
+    )
+    logger.info(f"LoRA输出目录: {config.lora_output_path}")
+    logger.info(f"检查点目录: {config.checkpoint_dir}")
 
     # 步骤1: 加载分词器
     logger.info(f"加载分词器: {config.base_model_path}")
@@ -243,23 +355,29 @@ def main():
     logger.info(f"加载基础模型: {config.base_model_path}")
 
     # 配置模型加载
+    model_dtype = _torch_dtype(config.model_dtype)
     model_kwargs = {
-        "dtype": torch.float16 if config.fp16 else torch.float32,
-        "device_map": "auto",  # 自动设备映射，支持CPU卸载
+        "torch_dtype": model_dtype,
         "trust_remote_code": True,
         "low_cpu_mem_usage": True,
     }
+
+    if device == "cuda":
+        model_kwargs["device_map"] = "auto"
+    elif device == "cpu":
+        model_kwargs["device_map"] = "cpu"
 
     # 如果启用梯度检查点，需要在加载前设置
     if config.gradient_checkpointing:
         model_kwargs["use_cache"] = False
 
-    # 量化配置以节省显存 (仅当CUDA可用时)
-    if torch.cuda.is_available() and config.use_4bit:
+    # 量化配置以节省显存；bitsandbytes仅适用于CUDA，macOS MPS不可用。
+    using_kbit = device == "cuda" and config.use_4bit
+    if using_kbit:
         # 使用4位量化，显著减少显存占用
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16 if config.fp16 else torch.float32,
+            bnb_4bit_compute_dtype=model_dtype,
             bnb_4bit_use_double_quant=True,  # 双重量化进一步节省内存
             bnb_4bit_quant_type="nf4",  # 4位量化类型
         )
@@ -268,16 +386,24 @@ def main():
         model_kwargs["max_memory"] = {0: config.gpu_max_memory, "cpu": config.cpu_max_memory}
         logger.info(f"已启用4位量化以节省显存，GPU内存限制: {config.gpu_max_memory}")
     else:
-        logger.info("未启用量化，使用标准加载")
+        logger.info("未启用4位量化，使用标准加载")
 
     model = AutoModelForCausalLM.from_pretrained(
         config.base_model_path,
         **model_kwargs
     )
 
-    # 清理CUDA缓存
-    torch.cuda.empty_cache()
-    logger.info("已清理CUDA缓存")
+    if device == "mps":
+        model = model.to("mps")
+    elif device == "cpu":
+        model = model.to("cpu")
+
+    if device == "cuda":
+        torch.cuda.empty_cache()
+        logger.info("已清理CUDA缓存")
+    elif device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+        torch.mps.empty_cache()
+        logger.info("已清理MPS缓存")
 
     # 步骤3: 配置LoRA
     logger.info("配置LoRA...")
@@ -291,8 +417,8 @@ def main():
         inference_mode=False
     )
 
-    # 准备模型用于k-bit训练（即使不使用量化也建议调用）
-    model = prepare_model_for_kbit_training(model)
+    if using_kbit:
+        model = prepare_model_for_kbit_training(model)
 
     # 应用LoRA
     model = get_peft_model(model, lora_config)
@@ -338,12 +464,12 @@ def main():
     data_collator = DataCollatorForSeq2Seq(
         tokenizer=tokenizer,
         padding=True,
-        pad_to_multiple_of=8 if config.fp16 else None
+        pad_to_multiple_of=8 if model_dtype in {torch.float16, torch.bfloat16} else None
     )
 
     # 步骤6: 配置训练参数
     training_args_kwargs = {
-        "output_dir": "./lora_checkpoints",  # 检查点目录
+        "output_dir": config.checkpoint_dir,
         "overwrite_output_dir": True,
         "num_train_epochs": config.num_train_epochs,
         "per_device_train_batch_size": config.per_device_train_batch_size,
@@ -369,7 +495,8 @@ def main():
         "ddp_find_unused_parameters": False,
         "remove_unused_columns": False,
         "group_by_length": False,  # 不按长度分组，因为我们的样本长度相近
-        "dataloader_num_workers": 0,  # Windows上可能需要设为0
+        "dataloader_num_workers": 0,
+        "dataloader_pin_memory": device == "cuda",
     }
 
     # 如果配置了max_steps，则添加
@@ -396,9 +523,10 @@ def main():
     logger.info("训练完成，保存模型...")
 
     # 保存LoRA权重
-    lora_output_path = os.path.join(PROJECT_ROOT, "lora_weights")
-    model.save_pretrained(lora_output_path)
-    logger.info(f"LoRA权重已保存到: {lora_output_path}")
+    os.makedirs(config.lora_output_path, exist_ok=True)
+    model.save_pretrained(config.lora_output_path)
+    tokenizer.save_pretrained(config.lora_output_path)
+    logger.info(f"LoRA权重已保存到: {config.lora_output_path}")
 
     # 步骤10: 记录训练统计
     logger.info("记录训练统计...")
@@ -408,15 +536,22 @@ def main():
     metrics["train_time"] = train_result.metrics.get("train_runtime", 0)
 
     # 保存训练统计
+    os.makedirs(config.output_model_path, exist_ok=True)
     stats_path = os.path.join(config.output_model_path, "training_stats.json")
     with open(stats_path, 'w', encoding='utf-8') as f:
         json.dump(metrics, f, indent=2)
 
     logger.info(f"训练统计已保存到: {stats_path}")
 
+    profile_path = os.path.join(config.lora_output_path, "training_profile.json")
+    with open(profile_path, 'w', encoding='utf-8') as f:
+        json.dump(_config_snapshot(config, device), f, ensure_ascii=False, indent=2)
+    logger.info(f"训练配置快照已保存到: {profile_path}")
+
     logger.info("=" * 60)
     logger.info("LoRA微调完成!")
-    logger.info(f"模型已保存到: {config.output_model_path}")
+    logger.info(f"LoRA适配器已保存到: {config.lora_output_path}")
+    logger.info(f"训练统计目录: {config.output_model_path}")
     logger.info(f"结束时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 60)
 

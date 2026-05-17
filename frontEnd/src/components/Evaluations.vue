@@ -145,7 +145,7 @@ const loadEvaluations = async () => {
   if (!token) { alert('请先登录'); return }
   loading.value = true
   try {
-    const res = await fetch('http://localhost:5000/api/evaluations', {
+    const res = await fetch('http://localhost:5050/api/evaluations', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     if (!res.ok) throw new Error('获取失败')
@@ -159,7 +159,7 @@ const deleteEvaluation = async (id) => {
   const token = getToken()
   if (!token) return
   try {
-    const res = await fetch(`http://localhost:5000/api/evaluations/${id}`, {
+    const res = await fetch(`http://localhost:5050/api/evaluations/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     })

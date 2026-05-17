@@ -21,6 +21,13 @@ def upload_file():
         uploaded_file = FileService.save_uploaded_file(file, int(uid), UPLOAD_FOLDER)
         
         parsed_text = FileService.parse_file(uploaded_file.filepath, int(uid))
+        FileService._add_file_to_vector_store(
+            uploaded_file.id,
+            int(uid),
+            uploaded_file.filename,
+            uploaded_file.filepath,
+            text_content=parsed_text,
+        )
         
         return jsonify({
             'file_id': uploaded_file.id,

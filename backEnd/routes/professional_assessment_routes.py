@@ -195,6 +195,7 @@ def evaluate_session(session_id):
             'expression_score': evaluation.expression_score,
             'knowledge_score': evaluation.knowledge_score,
             'overall_score': evaluation.overall_score,
+            'skill_scores': evaluation.skill_scores or {},
             'feedback': evaluation.feedback,
             'timestamp': (evaluation.timestamp.isoformat() + 'Z') if evaluation.timestamp else None
         }
@@ -411,6 +412,18 @@ def submit_assessment():
                 'raw_evaluation': evaluation_data  # 包含原始评估数据
             }
 
+            persisted_evaluation = None
+            if session_id:
+                persisted_evaluation, persist_error = ProfessionalAssessmentService.persist_evaluation_result(
+                    session_id=int(session_id),
+                    user_id=int(uid),
+                    evaluation_data=evaluation_data
+                )
+                if persist_error:
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] submit_assessment - 评估结果持久化失败: {persist_error}")
+                elif persisted_evaluation:
+                    result['evaluation_id'] = persisted_evaluation.id
+
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] submit_assessment - 评估完成 - 技能数: {len(skill_scores)}, 综合分数: {overall_score}")
 
             return jsonify({
@@ -456,6 +469,22 @@ def submit_assessment():
                     'warning': '模型服务不可用，返回模拟结果'
                 }
 
+                if session_id:
+                    mock_evaluation_data = {
+                        'skill_scores': skill_scores,
+                        'overall_score': overall_score,
+                        'feedback': feedback,
+                    }
+                    persisted_evaluation, persist_error = ProfessionalAssessmentService.persist_evaluation_result(
+                        session_id=int(session_id),
+                        user_id=int(uid),
+                        evaluation_data=mock_evaluation_data
+                    )
+                    if persist_error:
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] submit_assessment - 模拟评估结果持久化失败: {persist_error}")
+                    elif persisted_evaluation:
+                        result['evaluation_id'] = persisted_evaluation.id
+
                 return jsonify({
                     'message': '测评提交成功(模拟)',
                     'cohort': cohort,
@@ -471,5 +500,3 @@ def submit_assessment():
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'提交测评时出错: {str(e)}'}), 500
-
-

@@ -88,7 +88,7 @@ export default {
       try {
         this.error = '';
         this.loading = true;
-        const response = await axios.post('http://localhost:5000/api/login', this.form);
+        const response = await axios.post('http://localhost:5050/api/login', this.form);
         localStorage.setItem('token', response.data.access_token);
         localStorage.setItem('username', response.data.username);
         this.$emit('login-success', response.data);

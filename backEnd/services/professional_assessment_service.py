@@ -315,6 +315,7 @@ class ProfessionalAssessmentService:
                 expression_score=expression_score,
                 knowledge_score=knowledge_score,
                 overall_score=overall_score,
+                skill_scores=skill_scores,
                 feedback=feedback,
             )
             db.session.add(evaluation)
@@ -332,6 +333,62 @@ class ProfessionalAssessmentService:
             db.session.rollback()
             error_msg = f"评估会话失败: {str(e)}"
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ProfessionalAssessmentService.evaluate_session - {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return None, error_msg
+
+    @staticmethod
+    def persist_evaluation_result(
+        session_id: int,
+        user_id: int,
+        evaluation_data: Dict[str, Any]
+    ) -> Tuple[Optional[Evaluation], Optional[str]]:
+        """将专业测评模型结果持久化到 Evaluation 表，并更新会话状态。"""
+        try:
+            session, error = ProfessionalAssessmentService.get_session(session_id, user_id)
+            if error:
+                return None, error
+
+            skill_scores = evaluation_data.get('skill_scores', {}) or {}
+            overall_score = evaluation_data.get('overall_score', 0)
+            feedback = evaluation_data.get('feedback', '')
+
+            logic_score = skill_scores.get('逻辑思维', skill_scores.get('责任感', 0))
+            creativity_score = skill_scores.get('创造力', 0)
+            expression_score = skill_scores.get('表达能力', skill_scores.get('同理心', 0))
+            knowledge_score = skill_scores.get('知识广度', skill_scores.get('好奇心', 0))
+
+            if not any([logic_score, creativity_score, expression_score, knowledge_score]):
+                skill_values = list(skill_scores.values())
+                logic_score = skill_values[0] if len(skill_values) > 0 else 0
+                creativity_score = skill_values[1] if len(skill_values) > 1 else 0
+                expression_score = skill_values[2] if len(skill_values) > 2 else 0
+                knowledge_score = skill_values[3] if len(skill_values) > 3 else 0
+
+            evaluation = Evaluation.query.get(session.evaluation_id) if session.evaluation_id else None
+            if evaluation is None:
+                evaluation = Evaluation(
+                    user_id=user_id,
+                    assessment_session_id=session_id,
+                )
+                db.session.add(evaluation)
+
+            evaluation.logic_score = logic_score
+            evaluation.creativity_score = creativity_score
+            evaluation.expression_score = expression_score
+            evaluation.knowledge_score = knowledge_score
+            evaluation.overall_score = overall_score
+            evaluation.skill_scores = skill_scores
+            evaluation.feedback = feedback
+            db.session.commit()
+
+            session.mark_as_evaluated(evaluation.id)
+            return evaluation, None
+
+        except Exception as e:
+            db.session.rollback()
+            error_msg = f"保存专业测评评估结果失败: {str(e)}"
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ProfessionalAssessmentService.persist_evaluation_result - {error_msg}")
             import traceback
             traceback.print_exc()
             return None, error_msg
@@ -583,4 +640,3 @@ class ProfessionalAssessmentService:
         except Exception as e:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ProfessionalAssessmentService.get_all_questions - 错误: {str(e)}")
             return []
-

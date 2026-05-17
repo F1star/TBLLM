@@ -68,8 +68,10 @@ class EvaluationService:
 
     @staticmethod
     def get_latest_evaluation(user_id, session_id=None):
-        """获取最新评估记录，可指定会话"""
-        query = Evaluation.query.filter_by(user_id=user_id)
+        """获取最新评估记录，可指定会话（排除专业测评记录）"""
+        query = Evaluation.query.filter_by(user_id=user_id).filter(
+            Evaluation.assessment_session_id.is_(None)
+        )
         if session_id is not None:
             query = query.filter_by(session_id=session_id)
         evaluation = query.order_by(Evaluation.timestamp.desc()).first()
@@ -90,8 +92,10 @@ class EvaluationService:
 
     @staticmethod
     def get_user_evaluations(user_id, session_id=None):
-        """获取用户评估记录，可指定会话"""
-        query = Evaluation.query.filter_by(user_id=user_id)
+        """获取用户评估记录，可指定会话（排除专业测评记录）"""
+        query = Evaluation.query.filter_by(user_id=user_id).filter(
+            Evaluation.assessment_session_id.is_(None)
+        )
         if session_id is not None:
             query = query.filter_by(session_id=session_id)
         evaluations = query.order_by(Evaluation.timestamp.desc()).all()

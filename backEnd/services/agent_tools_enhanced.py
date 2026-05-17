@@ -13,8 +13,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any, Dict, List, Optional, Type
 
+from pydantic import PrivateAttr
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain.tools import tool
 
@@ -23,6 +25,34 @@ from services.chat_service import ChatService
 from services.evaluation_service import EvaluationService
 from services.session_service import SessionService
 from db_models.chat_history import ChatHistory
+
+
+def _clean_history_content(content: str) -> str:
+    """清理历史消息中曾经泄露的括号式内部说明。"""
+    text = re.sub(r"\s+", " ", content or "").strip()
+    if not text:
+        return ""
+
+    meta_terms = (
+        "根据用户的输入", "提供相应的答案", "如果学生", "不需回答", "无需回答",
+        "请礼貌", "系统", "提示", "备注", "内部", "写作意图", "对话策略",
+    )
+    term_pattern = "|".join(re.escape(term) for term in meta_terms)
+    text = re.sub(rf"（[^（）]{{0,160}}(?:{term_pattern})[^（）]{{0,160}}）", "", text)
+    text = re.sub(rf"\([^()]{{0,160}}(?:{term_pattern})[^()]{{0,160}}\)", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _clip_text(text: str, max_chars: int) -> str:
+    """截断展示文本，明确标出省略，避免日志/证据看起来像半句话。"""
+    cleaned = _clean_history_content(text)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    clipped = cleaned[:max_chars].rstrip()
+    last_punctuation = max(clipped.rfind(mark) for mark in "。！？；.!?;")
+    if last_punctuation >= max_chars // 2:
+        clipped = clipped[:last_punctuation + 1]
+    return f"{clipped}...[已截断]"
 
 
 class TimeTool(BaseTool):
@@ -58,19 +88,25 @@ class DocumentRetrievalTool(BaseTool):
         "输入是查询语句，输出是相关文档片段。"
     )
     args_schema: Optional[Type] = None
+    _rag_service: RAGService = PrivateAttr()
+    _user_id: int = PrivateAttr(default=0)
 
     def __init__(self, rag_service: RAGService, user_id: int, **kwargs):
         super().__init__(**kwargs)
-        self.rag_service = rag_service
-        self.user_id = user_id
+        self._rag_service = rag_service
+        self._user_id = user_id
+
+    def set_user_id(self, user_id: int):
+        """设置当前用户ID，用于复用同一个Agent工具实例。"""
+        self._user_id = user_id
 
     def _run(self, query: str) -> str:
         """执行文档检索"""
         try:
             # 使用RAGService检索相关文档
-            context = self.rag_service.build_context(
+            context = self._rag_service.build_context(
                 query=query,
-                user_id=self.user_id,
+                user_id=self._user_id,
                 top_k=3
             )
 
@@ -101,16 +137,17 @@ class EvaluationCallTool(BaseTool):
         "输入可以是空字符串或具体的评估请求。"
     )
     args_schema: Optional[Type] = None
+    _user_id: int = PrivateAttr(default=0)
 
     def __init__(self, user_id: int, **kwargs):
         super().__init__(**kwargs)
-        self.user_id = user_id
+        self._user_id = user_id
 
     def _run(self, request: str = "") -> str:
         """执行评估调用"""
         try:
             # 获取用户的最近对话历史
-            recent_chats = ChatService.get_recent_chats(self.user_id, limit=10)
+            recent_chats = ChatService.get_recent_chats(self._user_id, limit=10)
 
             # 格式化历史对话
             history_text = "\n".join(
@@ -121,7 +158,7 @@ class EvaluationCallTool(BaseTool):
             # 调用评估服务
             # 注意：这里简化实现，实际可能需要更多上下文
             result = EvaluationService.evaluate_user(
-                user_id=self.user_id,
+                user_id=self._user_id,
                 chat_history=history_text,
                 file_context=""  # 暂时不使用文件上下文
             )
@@ -159,10 +196,11 @@ class SessionManagerTool(BaseTool):
         "输入可以是'list'查看会话列表，'clear'清除当前会话等。"
     )
     args_schema: Optional[Type] = None
+    _user_id: int = PrivateAttr(default=0)
 
     def __init__(self, user_id: int, **kwargs):
         super().__init__(**kwargs)
-        self.user_id = user_id
+        self._user_id = user_id
 
     def _run(self, command: str = "") -> str:
         """执行会话管理命令"""
@@ -171,7 +209,7 @@ class SessionManagerTool(BaseTool):
         try:
             if command == "list" or command == "查看会话":
                 # 获取用户的所有会话
-                sessions = ChatService.get_user_sessions(self.user_id)
+                sessions = ChatService.get_user_sessions(self._user_id)
 
                 if not sessions:
                     return "您还没有创建任何会话。"
@@ -190,7 +228,7 @@ class SessionManagerTool(BaseTool):
             elif command == "clear" or command == "清除":
                 # 清除当前会话的历史（这里简化处理）
                 # 实际实现可能需要指定会话ID
-                ChatService.clear_user_history(self.user_id, session_id=None)
+                ChatService.clear_user_history(self._user_id, session_id=None)
                 return "对话历史已清除。"
 
             elif command.startswith("switch") or command.startswith("切换"):
@@ -321,9 +359,7 @@ class FileSummaryTool(BaseTool):
                     text = FileService.parse_file(f.filepath, self._user_id)
                     if text and len(text) > 20:
                         # 取前200字作为摘要
-                        summary = text[:200].replace('\n', ' ')
-                        if len(text) > 200:
-                            summary += "..."
+                        summary = _clip_text(text.replace('\n', ' '), 220)
                         lines.append(f"  摘要：{summary}")
                     else:
                         lines.append("  摘要：文件内容为空或无法解析")
@@ -369,7 +405,9 @@ class SessionHistoryTool(BaseTool):
             lines = []
             for msg in history[-30:]:  # 最近30条
                 role = "用户" if msg["role"] == "user" else "AI助手"
-                lines.append(f"{role}: {msg['content'][:500]}")
+                content = _clip_text(msg.get("content", ""), 420)
+                if content:
+                    lines.append(f"{role}: {content}")
 
             result = "\n".join(lines)
             prefix = f"当前会话历史（共{len(history)}条）：\n"
@@ -423,7 +461,8 @@ class AllSessionsHistoryTool(BaseTool):
 
             lines = []
             total = len(history)
-            lines.append(f"用户共有 {len(sessions)} 个会话，总计 {total} 条消息。\n")
+            user_total = sum(1 for msg in history if msg.get("role") == "user")
+            lines.append(f"用户共有 {len(sessions)} 个会话，总计 {total} 条消息，其中用户消息 {user_total} 条。以下仅列出用户侧证据。\n")
 
             # 按数字排序（会话ID），"未分组"排最后
             def sort_key(sid):
@@ -433,11 +472,15 @@ class AllSessionsHistoryTool(BaseTool):
                     return (1, sid)
 
             for sid, msgs in sorted(sessions.items(), key=lambda x: sort_key(x[0])):
+                user_msgs = [msg for msg in msgs if msg.get("role") == "user"]
+                if not user_msgs:
+                    continue
                 session_label = f"会话 {sid}" if sid != "未分组" else "未分组历史"
-                lines.append(f"【{session_label}】（{len(msgs)}条）")
-                for msg in msgs[-10:]:  # 每个会话最近10条
-                    role = "用户" if msg["role"] == "user" else "AI助手"
-                    lines.append(f"  {role}: {msg['content'][:300]}")
+                lines.append(f"【{session_label}】（用户消息{len(user_msgs)}条）")
+                for msg in user_msgs[-10:]:  # 每个会话最近10条用户消息
+                    content = _clip_text(msg.get("content", ""), 260)
+                    if content:
+                        lines.append(f"  用户: {content}")
                 lines.append("")
 
             result = "\n".join(lines)

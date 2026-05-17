@@ -40,13 +40,17 @@ class LocalChatLLM(LLM):
 
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] LocalChatLLM._call - 提示长度: {len(prompt)}, max_new_tokens: {kwargs.get('max_new_tokens', self.max_new_tokens)}")
 
+        system_prompt = kwargs.get(
+            "system_prompt",
+            (
+                "你是一个严谨的本地智能体。请严格遵循 ReAct 输出格式。"
+                "如果已经能够回答，就直接给出 Final Answer。"
+            ),
+        )
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "你是一个严谨的本地智能体。请严格遵循 ReAct 输出格式。"
-                    "如果已经能够回答，就直接给出 Final Answer。"
-                ),
+                "content": system_prompt,
             },
             {"role": "user", "content": prompt},
         ]

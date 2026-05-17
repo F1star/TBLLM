@@ -26,7 +26,7 @@
         <button v-if="currentSession" @click="evaluateSession" class="action-btn" title="评估会话">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         </button>
-        <label class="deep-toggle" title="深度思考（使用 ReAct 分析）">
+        <label class="deep-toggle" title="证据增强评估">
           <input type="checkbox" v-model="deepEval">
           <span class="toggle-switch-sm"></span>
         </label>
@@ -163,9 +163,9 @@ const sessions = ref([])
 const sessionsLoading = ref(false)
 const deepEval = ref(false)
 
-const API_URL = 'http://localhost:5000/api/chat/stream'
-const CLEAR_API_URL = 'http://localhost:5000/api/chat/clear'
-const EVALUATE_API_URL = 'http://localhost:5000/api/evaluate'
+const API_URL = 'http://localhost:5050/api/chat/stream'
+const CLEAR_API_URL = 'http://localhost:5050/api/chat/clear'
+const EVALUATE_API_URL = 'http://localhost:5050/api/evaluate'
 
 const getToken = () => localStorage.getItem('token')
 
@@ -328,7 +328,7 @@ const loadSessions = async () => {
   if (!token) return false
   sessionsLoading.value = true
   try {
-    const res = await fetch('http://localhost:5000/api/sessions', {
+    const res = await fetch('http://localhost:5050/api/sessions', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     if (res.ok) { sessions.value = await res.json(); return true }
@@ -350,7 +350,7 @@ const createNewSession = async () => {
   if (!token) { alert('请先登录'); return }
   const name = prompt('请输入会话名称（可选）:') || ''
   try {
-    const res = await fetch('http://localhost:5000/api/sessions', {
+    const res = await fetch('http://localhost:5050/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ name })
@@ -371,7 +371,7 @@ const loadSessionMessages = async () => {
   const token = getToken()
   if (!token) return
   try {
-    const res = await fetch(`http://localhost:5000/api/chat/history?session_id=${currentSession.value.id}`, {
+    const res = await fetch(`http://localhost:5050/api/chat/history?session_id=${currentSession.value.id}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     if (res.ok) {

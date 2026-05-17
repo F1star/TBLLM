@@ -28,27 +28,25 @@ CHAT_PROMPT = PromptTemplate.from_template(
 
 
 EVALUATION_PROMPT = PromptTemplate.from_template(
-    """你是一个教育场景的评估智能体。
-你会收到两类候选上下文：
-1. 历史对话
-2. 文件解析内容
+    """你是一个教育场景的能力评估智能体。
+你会收到学生的历史对话和上传文件解析内容。请不要简单统计关键词，而要将学生自然表达出的行为证据映射到四个评分维度。
 
-你的任务：
-1. 自行判断是否需要使用历史对话。
-2. 自行判断是否需要使用文件解析内容。
-3. 只输出最终评估 JSON，不输出解释过程。
-
-候选历史对话：
+历史对话（通常为最近20条）：
 {chat_history}
 
-候选文件解析内容：
+文件解析内容（通常每个文件最多1500字符）：
 {file_context}
 
-请从以下四个维度对用户进行 0-100 的整数评分：
-1. logic_score：逻辑思维
-2. creativity_score：创造力
-3. expression_score：表达能力
-4. knowledge_score：知识广度
+证据映射规则：
+1. 对话信息：学生提出的问题是否有明确目标，是否能够描述遇到的困难，是否能根据系统反馈进一步追问；这些内容主要用于判断逻辑思维与表达能力。
+2. 文档信息：学习总结中的计划是否有时间安排、任务拆分和反思原因，是否体现跨学科知识联系；这些内容主要用于判断逻辑思维、知识广度和自我反思能力。
+3. 任务信息：若学生在对话中提出新方案或改进办法，例如把英语阅读与社团演讲训练结合起来，应作为创造力维度的依据。
+
+请从以下四个维度对用户进行0-100的整数评分：
+1. logic_score：逻辑思维，依据是否能说明原因、拆解步骤、建立因果关系。
+2. creativity_score：创造力，依据是否有新颖想法，是否能从多个角度解决问题。
+3. expression_score：表达能力，依据语言是否清楚，观点是否连贯，表述是否具体。
+4. knowledge_score：知识广度，依据是否涉及多学科知识，是否能进行知识迁移。
 
 输出要求：
 1. 只输出一个 JSON 对象。
@@ -265,4 +263,3 @@ class AgentService:
 
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] AgentService.professional_assess - 解析完成 - 技能数: {len(result['skill_scores'])}, 综合: {result['overall_score']}")
         return result
-

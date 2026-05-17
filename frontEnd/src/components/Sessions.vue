@@ -140,7 +140,7 @@ export default {
       this.loading = true; this.error = null;
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/sessions', {
+        const res = await fetch('http://localhost:5050/api/sessions', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -155,7 +155,7 @@ export default {
     async confirmCreateSession() {
       const token = localStorage.getItem('token');
       try {
-        const res = await fetch('http://localhost:5000/api/sessions', {
+        const res = await fetch('http://localhost:5050/api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ name: this.newSessionName })
@@ -181,7 +181,7 @@ export default {
       if (session.editName === session.name) { session.editing = false; return; }
       const token = localStorage.getItem('token');
       try {
-        const res = await fetch(`http://localhost:5000/api/sessions/${session.id}`, {
+        const res = await fetch(`http://localhost:5050/api/sessions/${session.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ name: session.editName })
@@ -197,7 +197,7 @@ export default {
       if (!confirm(`确定要删除 "${session.name}" 吗？`)) return;
       const token = localStorage.getItem('token');
       try {
-        const res = await fetch(`http://localhost:5000/api/sessions/${session.id}`, {
+        const res = await fetch(`http://localhost:5050/api/sessions/${session.id}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ delete_messages: false })
@@ -223,7 +223,7 @@ export default {
       this.messagesLoading = true;
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`http://localhost:5000/api/chat/history?session_id=${session.id}`, {
+        const res = await fetch(`http://localhost:5050/api/chat/history?session_id=${session.id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) this.sessionMessages = await res.json();
@@ -234,7 +234,7 @@ export default {
       if (!confirm(`确定要评估 "${session.name}" 吗？`)) return;
       const token = localStorage.getItem('token');
       try {
-        const res = await fetch('http://localhost:5000/api/evaluate', {
+        const res = await fetch('http://localhost:5050/api/evaluate', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: session.id })

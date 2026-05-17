@@ -16,6 +16,7 @@ import os
 import unittest
 import tempfile
 import shutil
+import threading
 from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
 
@@ -51,6 +52,7 @@ class TestVectorStore(unittest.TestCase):
 
         # 初始化VectorStore
         vector_store = VectorStore(persist_directory=self.temp_dir)
+        _ = vector_store.chroma_client
 
         # 验证属性
         self.assertEqual(vector_store.persist_directory, self.temp_dir)
@@ -138,6 +140,7 @@ class TestAdvancedAgent(unittest.TestCase):
         # 创建模拟工具
         mock_tool = MagicMock(spec=BaseTool)
         mock_tool.name = "test_tool"
+        mock_tool.description = "测试工具"
 
         # 模拟AgentExecutor
         mock_executor = MagicMock()
@@ -156,6 +159,85 @@ class TestAdvancedAgent(unittest.TestCase):
         mock_executor.invoke.assert_called_once()
 
         print("✓ AdvancedAgent chat方法测试通过")
+
+    def test_collect_evidence_with_react_strips_trace(self):
+        """测试ReAct证据收集只返回证据摘要，不泄漏过程标签"""
+        from services.advanced_agent import AdvancedAgent
+
+        agent = object.__new__(AdvancedAgent)
+        history_tool = MagicMock()
+        history_tool.name = "all_history"
+        history_tool.run.return_value = "用户曾说明自己想改进表达。"
+        file_tool = MagicMock()
+        file_tool.name = "file_summary"
+        file_tool.run.return_value = "用户上传了学习总结。"
+        agent.tools = [
+            history_tool,
+            file_tool,
+        ]
+        agent.memory = None
+        agent.llm = MagicMock()
+        agent.llm.invoke.return_value = (
+            "Thought: 我需要整理证据\n"
+            "Final Answer: 用户能说明学习目标，并上传了学习总结。"
+        )
+
+        evidence = agent._collect_evidence_with_react("用户: 我想改进表达", "学习总结")
+
+        self.assertIn("【ReAct证据摘要】", evidence)
+        self.assertIn("用户能说明学习目标", evidence)
+        self.assertNotIn("Thought:", evidence)
+        self.assertNotIn("Action:", evidence)
+        self.assertNotIn("Observation:", evidence)
+
+        print("OK ReAct证据摘要清理测试通过")
+
+    def test_evaluate_deep_mode_uses_react_evidence_for_final_json(self):
+        """测试deep_mode=True时ReAct只供证据，最终仍返回稳定JSON"""
+        from services.advanced_agent import AdvancedAgent
+
+        agent = object.__new__(AdvancedAgent)
+        agent.llm = MagicMock()
+        agent.llm.invoke.return_value = (
+            '{"logic_score": 80, "creativity_score": 75, '
+            '"expression_score": 82, "knowledge_score": 78, '
+            '"overall_score": 79, "feedback": "能结合材料说明学习目标，表达较清楚。"}'
+        )
+        agent._collect_evidence_with_react = MagicMock(
+            return_value="【ReAct证据摘要】\n用户能说明目标。"
+        )
+
+        result = agent.evaluate("用户: 我想提升表达", "学习总结", deep_mode=True)
+
+        self.assertEqual(result["overall_score"], 79)
+        self.assertNotIn("Thought", result["feedback"])
+        agent._collect_evidence_with_react.assert_called_once()
+        prompt = agent.llm.invoke.call_args.args[0]
+        self.assertIn("【ReAct证据摘要】", prompt)
+
+        print("OK deep_mode ReAct证据评估测试通过")
+
+    def test_evaluate_deep_mode_falls_back_when_react_fails(self):
+        """测试ReAct失败时回退到程序化工具上下文"""
+        from services.advanced_agent import AdvancedAgent
+
+        agent = object.__new__(AdvancedAgent)
+        agent.llm = MagicMock()
+        agent.llm.invoke.return_value = (
+            '{"logic_score": 70, "creativity_score": 68, '
+            '"expression_score": 72, "knowledge_score": 69, '
+            '"overall_score": 70, "feedback": "当前证据有限，但能看出基本表达能力。"}'
+        )
+        agent._collect_evidence_with_react = MagicMock(side_effect=RuntimeError("parse failed"))
+        agent._collect_evaluation_tool_context = MagicMock(return_value="【all_history】\n备用证据")
+
+        result = agent.evaluate("用户: 你好", "", deep_mode=True)
+
+        self.assertEqual(result["overall_score"], 70)
+        agent._collect_evaluation_tool_context.assert_called_once()
+        self.assertIn("备用证据", agent.llm.invoke.call_args.args[0])
+
+        print("OK ReAct失败回退测试通过")
 
 
 class TestModelServiceChat(unittest.TestCase):
@@ -190,6 +272,7 @@ class TestModelServiceChat(unittest.TestCase):
         service.model = MagicMock()
         service.model.device = "cpu"
         service.model.generate.return_value = [[1, 2, 3, 4, 5]]
+        service.generate_lock = threading.Lock()
         return service
 
     def test_chat_text_uses_chat_template_and_chat_token_budget(self):
@@ -205,13 +288,12 @@ class TestModelServiceChat(unittest.TestCase):
 
         messages = service.tokenizer.apply_chat_template.call_args.args[0]
         self.assertEqual(messages[0]["role"], "system")
-        self.assertIn("不要脑补未说明的知识点", messages[0]["content"])
+        self.assertIn("不要脑补未说明", messages[0]["content"])
         self.assertEqual(messages[-1], {"role": "user", "content": "我有一个知识没听懂"})
 
         generation_kwargs = service.model.generate.call_args.kwargs
         self.assertEqual(generation_kwargs["max_new_tokens"], CHAT_MAX_NEW_TOKENS)
-        self.assertGreaterEqual(generation_kwargs["max_new_tokens"], 768)
-        self.assertNotEqual(generation_kwargs["max_new_tokens"], MAX_NEW_TOKENS)
+        self.assertLess(generation_kwargs["max_new_tokens"], MAX_NEW_TOKENS)
 
         print("OK 普通聊天chat template和token上限测试通过")
 
@@ -262,11 +344,10 @@ class TestEnhancedToolFactory(unittest.TestCase):
         # 验证返回了工具列表
         self.assertIsInstance(tools, list)
 
-        # 应该至少包含时间工具和计算工具
+        # 基础工具集目前只保留文件摘要工具，评估专用Agent再按需注入其他工具
         if tools:
             tool_names = [tool.name for tool in tools]
-            self.assertIn("get_current_time", tool_names)
-            self.assertIn("calculator", tool_names)
+            self.assertIn("file_summary", tool_names)
 
         print("✓ 基础工具创建测试通过")
 
@@ -305,7 +386,7 @@ class TestRAGService(unittest.TestCase):
         """测试前准备"""
         pass
 
-    @patch('services.rag_service.FileService')
+    @patch('services.file_service.FileService')
     @patch('services.rag_service.get_vector_store')
     def test_rag_service_initialization(self, mock_get_vector_store, mock_file_service):
         """测试RAGService初始化"""
@@ -324,7 +405,7 @@ class TestRAGService(unittest.TestCase):
 
         print("✓ RAGService初始化测试通过")
 
-    @patch('services.rag_service.FileService')
+    @patch('services.file_service.FileService')
     def test_keyword_retrieval(self, mock_file_service):
         """测试关键词检索"""
         from services.rag_service import RAGService

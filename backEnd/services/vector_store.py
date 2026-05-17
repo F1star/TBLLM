@@ -16,6 +16,9 @@ from __future__ import annotations
 import os
 import shutil
 import logging
+import json
+import sqlite3
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -35,6 +38,23 @@ from config.constants import (
 
 # 设置日志
 logger = logging.getLogger(__name__)
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+
+
+DEFAULT_CHROMA_COLLECTION_CONFIG = {
+    "hnsw_configuration": {
+        "space": "cosine",
+        "ef_construction": 100,
+        "ef_search": 10,
+        "num_threads": 10,
+        "M": 16,
+        "resize_factor": 1.2,
+        "batch_size": 100,
+        "sync_threshold": 1000,
+        "_type": "HNSWConfigurationInternal",
+    },
+    "_type": "CollectionConfigurationInternal",
+}
 
 
 @dataclass
@@ -85,7 +105,19 @@ class VectorStore:
         if self._embedding_model is None:
             try:
                 logger.info(f"加载嵌入模型: {self.embedding_model_name}")
-                self._embedding_model = SentenceTransformer(self.embedding_model_name)
+                model_path = Path(self.embedding_model_name).expanduser()
+                is_local_path = model_path.is_absolute() or os.sep in self.embedding_model_name
+                if is_local_path and not model_path.exists():
+                    raise FileNotFoundError(
+                        f"本地嵌入模型不存在: {model_path}。"
+                        "请先运行: python scripts/prepare_embedding_model.py"
+                    )
+
+                local_only = os.environ.get("TBLLM_EMBEDDING_LOCAL_ONLY", "0") == "1"
+                self._embedding_model = SentenceTransformer(
+                    str(model_path) if is_local_path else self.embedding_model_name,
+                    local_files_only=local_only or is_local_path,
+                )
                 logger.info("嵌入模型加载完成")
             except Exception as e:
                 logger.error(f"嵌入模型加载失败: {str(e)}")
@@ -104,11 +136,60 @@ class VectorStore:
                         anonymized_telemetry=False
                     )
                 )
+                self._repair_legacy_collection_configs()
                 logger.debug("ChromaDB客户端初始化完成")
             except Exception as e:
                 logger.error(f"ChromaDB客户端初始化失败: {str(e)}")
                 raise
         return self._chroma_client
+
+    def _repair_legacy_collection_configs(self) -> None:
+        """修复旧 ChromaDB 持久化库中缺失 _type 的 collection 配置。"""
+        db_path = os.path.join(self.persist_directory, "chroma.sqlite3")
+        if not os.path.exists(db_path):
+            return
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                columns = {
+                    row[1]
+                    for row in conn.execute("PRAGMA table_info(collections)").fetchall()
+                }
+                if "config_json_str" not in columns:
+                    return
+
+                rows = conn.execute(
+                    "SELECT id, name, config_json_str FROM collections"
+                ).fetchall()
+                repaired = 0
+                default_config = json.dumps(
+                    DEFAULT_CHROMA_COLLECTION_CONFIG,
+                    ensure_ascii=False,
+                )
+
+                for collection_id, name, config_json in rows:
+                    needs_repair = False
+                    try:
+                        parsed = json.loads(config_json or "{}")
+                        needs_repair = parsed.get("_type") != "CollectionConfigurationInternal"
+                    except Exception:
+                        needs_repair = True
+
+                    if not needs_repair:
+                        continue
+
+                    conn.execute(
+                        "UPDATE collections SET config_json_str = ? WHERE id = ?",
+                        (default_config, collection_id),
+                    )
+                    repaired += 1
+                    logger.info(f"已修复 ChromaDB 集合配置: {name}")
+
+                if repaired:
+                    conn.commit()
+                    logger.info(f"已修复 {repaired} 个旧版 ChromaDB 集合配置")
+        except Exception as e:
+            logger.warning(f"旧版 ChromaDB 集合配置修复失败，将继续尝试原流程: {str(e)}")
 
     @property
     def collection(self) -> chromadb.Collection:
@@ -118,7 +199,10 @@ class VectorStore:
                 # 尝试获取现有集合，不存在则创建
                 self._collection = self.chroma_client.get_or_create_collection(
                     name=self.collection_name,
-                    metadata={"description": "用户文档向量存储"}
+                    metadata={
+                        "description": "用户文档向量存储",
+                        "hnsw:space": "cosine",
+                    }
                 )
                 logger.debug(f"集合 '{self.collection_name}' 已就绪")
             except Exception as e:
@@ -142,6 +226,7 @@ class VectorStore:
                 name=collection_name,
                 metadata={
                     "description": f"用户 {user_id} 的文档向量存储",
+                    "hnsw:space": "cosine",
                     "user_id": user_id,
                     "created_at": datetime.now().isoformat()
                 }
@@ -171,8 +256,8 @@ class VectorStore:
                 normalize_embeddings=True
             )
 
-            # 转换为列表格式
-            embeddings_list = embeddings.tolist()
+            # 转换为列表格式；真实模型通常返回 ndarray，测试替身可能直接返回 list。
+            embeddings_list = embeddings.tolist() if hasattr(embeddings, "tolist") else embeddings
             logger.debug(f"为 {len(texts)} 个文本创建了嵌入向量")
             return embeddings_list
 
@@ -283,8 +368,8 @@ class VectorStore:
                     metadata = results["metadatas"][0][i] if results["metadatas"] else {}
                     distance = results["distances"][0][i] if results["distances"] else 0.0
 
-                    # 转换距离为相似度得分（距离越小，相似度越高）
-                    similarity = 1.0 / (1.0 + distance) if distance > 0 else 1.0
+                    # cosine 空间下 Chroma 返回的是 cosine distance，范围通常为 0..2。
+                    similarity = max(0.0, min(1.0, 1.0 - distance))
 
                     document = Document(
                         id=doc_id,

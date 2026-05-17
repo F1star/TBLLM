@@ -12,6 +12,7 @@
 import os
 import sys
 import logging
+import hashlib
 from pathlib import Path
 
 # 项目根目录
@@ -89,6 +90,13 @@ def add_system_documents():
     # 系统用户ID（0表示系统用户）
     SYSTEM_USER_ID = 0
 
+    # 系统文档是可重复构建的数据，先清空旧集合，避免旧版 Chroma 索引格式导致写入失败。
+    try:
+        logger.info("清理旧的系统文档向量集合...")
+        rag_service.vector_store.clear_user_data(SYSTEM_USER_ID)
+    except Exception as e:
+        logger.warning(f"旧系统文档向量集合清理失败，将继续尝试写入: {e}")
+
     success_count = 0
     fail_count = 0
 
@@ -96,8 +104,9 @@ def add_system_documents():
         try:
             logger.info(f"处理文件: {pdf_file.name}")
 
-            # 生成文件ID（使用文件路径的哈希值）
-            file_id = abs(hash(str(pdf_file))) % 1000000
+            # 生成稳定文件ID（Python内置hash每次进程会变，不适合持久化ID）
+            relative_path = str(pdf_file.relative_to(PROJECT_ROOT))
+            file_id = int(hashlib.sha1(relative_path.encode("utf-8")).hexdigest()[:12], 16)
 
             # 解析文件内容
             logger.debug(f"解析文件内容: {pdf_file}")
@@ -134,8 +143,7 @@ def add_system_documents():
     if success_count > 0:
         logger.info("系统文档已成功添加到向量存储。")
         logger.info(f"系统用户ID: {SYSTEM_USER_ID}")
-        logger.info("注意: 目前系统文档仅对系统用户可见。")
-        logger.info("如需对所有用户可见，需要修改RAGService的检索逻辑。")
+        logger.info("系统文档会通过 RAGService 与用户文档一起参与检索。")
         return True
     else:
         logger.error("未成功添加任何文档")

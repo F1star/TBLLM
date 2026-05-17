@@ -104,6 +104,17 @@ def migrate_database():
                     _fix_evaluation_table_constraint(inspector)
                     break
 
+            # 检查是否存在skill_scores列（JSON类型存储17项技能分数）
+            if 'skill_scores' not in columns:
+                print("添加skill_scores列到evaluation表...")
+                try:
+                    db.session.execute(text('ALTER TABLE evaluation ADD COLUMN skill_scores JSON'))
+                    db.session.commit()
+                    print("skill_scores列添加成功")
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"添加skill_scores列失败: {e}")
+
         print("数据库迁移完成")
 
 def _fix_evaluation_table_constraint(inspector):
@@ -124,9 +135,12 @@ def _fix_evaluation_table_constraint(inspector):
                 feedback TEXT,
                 timestamp DATETIME,
                 session_id INTEGER,
+                assessment_session_id INTEGER,
+                skill_scores JSON,
                 PRIMARY KEY (id),
                 FOREIGN KEY(user_id) REFERENCES user (id),
-                FOREIGN KEY(chat_history_id) REFERENCES chat_history (id)
+                FOREIGN KEY(chat_history_id) REFERENCES chat_history (id),
+                FOREIGN KEY(assessment_session_id) REFERENCES professional_assessment_session (id)
             )
         '''))
 
@@ -144,7 +158,9 @@ def _fix_evaluation_table_constraint(inspector):
                 overall_score,
                 feedback,
                 timestamp,
-                session_id
+                session_id,
+                assessment_session_id,
+                skill_scores
             FROM evaluation
         '''))
 
@@ -178,6 +194,8 @@ def block_if_model_busy():
         return jsonify({"error": "模型正在生成，请稍后再试"}), 429
 
 if __name__ == '__main__':
+    host = os.environ.get("TBLLM_BACKEND_HOST", "127.0.0.1")
+    port = int(os.environ.get("TBLLM_BACKEND_PORT", "5050"))
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 启动青少年综合能力评价系统后端服务")
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 监听地址: http://127.0.0.1:5000")
-    app.run(debug=True, use_reloader=False)
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 监听地址: http://{host}:{port}")
+    app.run(host=host, port=port, debug=True, use_reloader=False)

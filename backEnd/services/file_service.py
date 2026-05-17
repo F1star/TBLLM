@@ -135,14 +135,14 @@ class FileService:
         return File.query.filter_by(id=file_id, user_id=user_id).first()
     
     @staticmethod
-    def _add_file_to_vector_store(file_id, user_id, filename, filepath):
+    def _add_file_to_vector_store(file_id, user_id, filename, filepath, text_content=None):
         """将文件内容添加到向量存储"""
-        if not RAG_AVAILABLE:
-            return
-
         try:
+            from services.rag_service import RAGService
+
             # 解析文件内容
-            text_content = FileService.parse_file(filepath, user_id)
+            if text_content is None:
+                text_content = FileService.parse_file(filepath, user_id)
 
             # 检查解析结果是否是有效文本（不是错误消息）
             if not text_content or text_content.startswith("解析") and "失败" in text_content:
@@ -170,10 +170,10 @@ class FileService:
     def _delete_file_from_vector_store(file_id, user_id):
         """从向量存储中删除文件的所有文档片段"""
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] FileService._delete_file_from_vector_store - 开始删除，文件ID: {file_id}, 用户ID: {user_id}")
-        if not RAG_AVAILABLE:
-            return
 
         try:
+            from services.rag_service import RAGService
+
             # 创建RAGService实例
             rag_service = RAGService()
 
@@ -194,6 +194,9 @@ class FileService:
         if not file:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] FileService.delete_file - 文件不存在")
             return False
+
+        # 删除向量存储中的文档片段；失败不影响原始文件删除。
+        FileService._delete_file_from_vector_store(file.id, user_id)
 
         # 删除文件
         if os.path.exists(file.filepath):

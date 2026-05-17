@@ -99,7 +99,7 @@ class AdvancedAgent:
             verbose=self.verbose,
             max_iterations=self.max_iterations,
             handle_parsing_errors=handle_parsing_errors,
-            return_intermediate_steps=False,  # 不返回中间步骤，简化输出
+            return_intermediate_steps=True,
         )
 
         logger.info(f"AdvancedAgent初始化完成，包含{len(tools)}个工具")
@@ -209,12 +209,42 @@ Final Answer: 给用户的最终回答
             评估结果字典
         """
         if deep_mode:
-            return self._evaluate_react(chat_history, file_context)
-        else:
-            return self._evaluate_simple(chat_history, file_context)
+            try:
+                react_evidence = self._collect_evidence_with_react(
+                    chat_history,
+                    file_context,
+                )
+                return self._evaluate_simple(
+                    chat_history,
+                    file_context,
+                    tool_context=react_evidence,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"ReAct证据收集失败，回退到程序化证据收集: {str(e)}"
+                )
+                return self._evaluate_simple(
+                    chat_history,
+                    file_context,
+                    include_tool_context=True,
+                )
 
-    def _evaluate_simple(self, chat_history: str, file_context: str) -> Dict[str, Any]:
-        """直接 LLM 评估，绕过 ReAct"""
+        return self._evaluate_simple(
+            chat_history,
+            file_context,
+            include_tool_context=False,
+        )
+
+    def _evaluate_simple(
+        self,
+        chat_history: str,
+        file_context: str,
+        include_tool_context: bool = False,
+        tool_context: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """直接 LLM 评估，确保最终输出稳定 JSON。"""
+        if tool_context is None:
+            tool_context = self._collect_evaluation_tool_context() if include_tool_context else "未启用补充工具上下文。"
         simple_prompt = f"""你是一个教育场景的评估智能体。
 
 历史对话：
@@ -223,32 +253,40 @@ Final Answer: 给用户的最终回答
 文件内容：
 {file_context or "暂无文件内容。"}
 
+补充上下文：
+{tool_context}
+
 请从以下四个维度对用户进行0-100的整数评分：
 1. logic_score：逻辑思维
 2. creativity_score：创造力
 3. expression_score：表达能力
 4. knowledge_score：知识广度
 
-请以JSON格式返回评分结果，格式如下：
+请只返回一个合法 JSON 对象，不要输出 Thought、Action、Final Answer、Markdown 代码块或解释文字。格式如下：
 {{
     "logic_score": 分数,
     "creativity_score": 分数,
     "expression_score": 分数,
     "knowledge_score": 分数,
     "overall_score": 平均分,
-    "feedback": "简要的反馈意见"
+    "feedback": "80到160字的单段中文反馈"
 }}
 
 注意：
 - 所有分数必须是0-100之间的整数
-- overall_score为四个维度的平均分
-- feedback应该包含具体的改进建议
+- overall_score为四个维度的平均分取整
+- feedback必须是单行字符串，不要换行，不要使用项目符号，不要包含未转义的英文双引号
+- 如果证据很少，应降低分数并在反馈中说明依据有限
 """
         try:
             response = self.llm.invoke(
                 simple_prompt,
-                max_new_tokens=1024,
-                temperature=0.2
+                max_new_tokens=512,
+                temperature=0.1,
+                system_prompt=(
+                    "你是教育评估模型。你必须只输出一个合法 JSON 对象，"
+                    "不要输出 ReAct、Thought、Action、Final Answer 或 Markdown。"
+                ),
             ).strip()
 
             parsed = self._extract_json(response)
@@ -256,79 +294,189 @@ Final Answer: 给用户的最终回答
                 logger.error(f"评估 JSON 解析失败: {response[:200]}")
                 raise ValueError(f"评估结果解析失败: {response[:200]}")
 
-            score_keys = ['logic_score', 'creativity_score', 'expression_score', 'knowledge_score', 'overall_score']
-            for key in score_keys:
-                if parsed.get(key) is None:
-                    logger.warning(f"评估结果中 {key} 为 null，已设为 0")
-                    parsed[key] = 0
-
-            return parsed
+            return self._normalise_evaluation_result(parsed)
         except Exception as e:
             logger.error(f"评估过程出错: {str(e)}", exc_info=True)
             raise
 
-    def _evaluate_react(self, chat_history: str, file_context: str) -> Dict[str, Any]:
-        """使用 ReAct 循环评估用户能力"""
-        # 清除之前对话的记忆，避免干扰
+    def _collect_evaluation_tool_context(self) -> str:
+        """程序化调用评估需要的工具，避免 ReAct 污染结构化输出。"""
+        context_blocks = []
+        for tool_name in ("all_history", "file_summary"):
+            tool = next((item for item in self.tools if item.name == tool_name), None)
+            if tool is None:
+                continue
+            try:
+                result = tool.run("")
+                if result:
+                    context_blocks.append(f"【{tool_name}】\n{str(result)[:1500]}")
+            except Exception as e:
+                logger.warning(f"评估补充工具 {tool_name} 调用失败: {str(e)}")
+
+        if not context_blocks:
+            return "暂无补充上下文。"
+        return "\n\n".join(context_blocks)
+
+    def _collect_evidence_with_react(self, chat_history: str, file_context: str) -> str:
+        """用受控 ReAct 收集评估证据，不让小模型自由输出 Action。"""
         self.clear_memory()
 
-        eval_input = f"""你需要对一个学生的综合能力进行评估。
+        available_tool_names = {tool.name for tool in self.tools}
+        required_tools = ("all_history", "file_summary")
+        missing_tools = [tool_name for tool_name in required_tools if tool_name not in available_tool_names]
+        if missing_tools:
+            raise ValueError(f"ReAct缺少必要工具: {', '.join(missing_tools)}")
 
-【背景参考】
-对话历史摘要：{chat_history[:1500] if chat_history else "暂无"}
-文件内容摘要：{file_context[:1500] if file_context else "暂无"}
+        trace_blocks: List[str] = []
+        evidence_blocks = [
+            f"【当前会话证据】\n{chat_history or '暂无历史对话。'}",
+            f"【当前文件证据】\n{file_context or '暂无文件内容。'}",
+        ]
 
-请严格按照以下步骤执行：
-步骤1：使用 all_history 工具获取该学生的所有会话历史（工具不需要任何参数，直接调用即可）。
-步骤2：使用 file_summary 工具获取该学生上传的文件内容（工具不需要任何参数，直接调用即可）。
-步骤3：综合所有信息，从四个维度评分（0-100的整数）：
-- logic_score：逻辑思维能力
-- creativity_score：创造力
-- expression_score：表达能力
-- knowledge_score：知识广度
-步骤4：overall_score 为四项平均分取整，feedback 给出简短评价建议。
+        all_history = self._run_controlled_react_step(
+            tool_name="all_history",
+            tool_input="",
+            thought="需要先查看用户全部历史对话，补充当前会话之外的表现证据。",
+            trace_blocks=trace_blocks,
+        )
+        evidence_blocks.append(f"【all_history 观察】\n{self._clip_observation(all_history, 1500)}")
 
-最终只输出一个 JSON 对象，格式如下：
-{{
-    "logic_score": 分数,
-    "creativity_score": 分数,
-    "expression_score": 分数,
-    "knowledge_score": 分数,
-    "overall_score": 平均分,
-    "feedback": "评价和建议"
-}}
+        file_summary = self._run_controlled_react_step(
+            tool_name="file_summary",
+            tool_input="",
+            thought="需要查看用户上传文件和摘要，补充文件中的学习计划、知识表现和反思证据。",
+            trace_blocks=trace_blocks,
+        )
+        evidence_blocks.append(f"【file_summary 观察】\n{self._clip_observation(file_summary, 1500)}")
 
-重要：工具调用不需要 user_id、student_id、files 等参数，直接传入空字符串即可。
-注意：必须先使用工具获取信息，不能凭空评分。"""
+        if "retrieve_documents" in available_tool_names:
+            query = self._build_retrieval_query(chat_history, file_context)
+            retrieved = self._run_controlled_react_step(
+                tool_name="retrieve_documents",
+                tool_input=query,
+                thought="需要使用本地向量检索补充系统知识库和用户文档片段，提高评估依据的准确性。",
+                trace_blocks=trace_blocks,
+            )
+            evidence_blocks.append(f"【retrieve_documents 观察】\n{self._clip_observation(retrieved, 1500)}")
+        else:
+            trace_blocks.append(
+                "Thought: 当前Agent没有 retrieve_documents 工具，只能基于历史和文件摘要进行评估。"
+            )
+
+        raw_evidence = "\n\n".join(evidence_blocks)
+        evidence = self._summarise_react_evidence(raw_evidence)
+
+        if not evidence:
+            raise ValueError("ReAct未返回有效证据摘要")
+
+        logger.info("受控ReAct证据收集完成:\n%s\nFinal Evidence完整摘要: %s", "\n".join(trace_blocks), evidence)
+        return f"【ReAct证据摘要】\n{evidence[:2500]}"
+
+    def _run_controlled_react_step(
+        self,
+        tool_name: str,
+        tool_input: str,
+        thought: str,
+        trace_blocks: List[str],
+    ) -> str:
+        """执行一个受控 ReAct 工具步骤，并记录 Thought/Action/Observation。"""
+        tool = next((item for item in self.tools if item.name == tool_name), None)
+        if tool is None:
+            raise ValueError(f"ReAct工具不存在: {tool_name}")
+
+        trace_blocks.append(f"Thought: {thought}")
+        trace_blocks.append(f"Action: {tool_name}")
+        trace_blocks.append(f"Action Input: {tool_input!r}")
+
+        result = str(tool.run(tool_input) or "").strip()
+        observation = self._clip_observation(result, 500).replace("\n", " ")
+        trace_blocks.append(f"Observation: {observation}")
+        return result
+
+    def _clip_observation(self, text: str, max_chars: int) -> str:
+        """截断工具观察并显式标注，避免日志看起来像内容没生成完。"""
+        cleaned = re.sub(r"\s+", " ", text or "").strip()
+        if len(cleaned) <= max_chars:
+            return cleaned
+        clipped = cleaned[:max_chars].rstrip()
+        last_punctuation = max(clipped.rfind(mark) for mark in "。！？；.!?;")
+        if last_punctuation >= max_chars // 2:
+            clipped = clipped[:last_punctuation + 1]
+        return f"{clipped}...[日志截断，完整内容已进入证据汇总]"
+
+    def _build_retrieval_query(self, chat_history: str, file_context: str) -> str:
+        """生成简短检索词，避免把复杂 JSON 传给检索工具。"""
+        source = f"{chat_history or ''} {file_context or ''}"
+        candidates = []
+        for term in ("逻辑思维", "创造力", "表达能力", "知识广度", "学习表现", "能力评价"):
+            if term in source:
+                candidates.append(term)
+        if not candidates:
+            candidates = ["青少年能力评价", "学习表现", "表达能力"]
+        return " ".join(candidates[:4])
+
+    def _summarise_react_evidence(self, raw_evidence: str) -> str:
+        """把工具观察压缩成证据摘要；失败时返回规则摘要，保证ReAct链路成功收束。"""
+        prompt = f"""请把以下评估证据压缩成一段完整的中文证据摘要。只总结证据，不要评分，不要输出JSON，不要写Thought/Action/Observation。
+
+{raw_evidence[:5000]}
+
+要求：
+- 说明对话证据、文件证据、证据不足点。
+- 150到260字。
+- 只输出一个自然段，不要标题、编号、项目符号或“证据摘要：”这类开头。
+- 最后必须用句号、问号或感叹号自然收尾。
+- 不要编造原文没有的信息。"""
 
         try:
-            result = self.agent_executor.invoke({"input": eval_input})
-            response = result.get("output", "")
-
-            logger.info(f"评估原始响应: {response[:300]}")
-
-            # 直接用 _extract_json 从原始输出中提取 JSON
-            parsed = self._extract_json(response)
-            if parsed is None:
-                # 如果直接没找到，尝试清理后再次提取
-                cleaned = self._clean_response(response)
-                parsed = self._extract_json(cleaned)
-
-            if parsed is None:
-                logger.error(f"评估 JSON 解析失败: {response[:200]}")
-                raise ValueError(f"评估结果解析失败: {response[:200]}")
-
-            score_keys = ['logic_score', 'creativity_score', 'expression_score', 'knowledge_score', 'overall_score']
-            for key in score_keys:
-                if parsed.get(key) is None:
-                    logger.warning(f"评估结果中 {key} 为 null，已设为 0")
-                    parsed[key] = 0
-
-            return parsed
-
+            response = self.llm.invoke(
+                prompt,
+                max_new_tokens=320,
+                temperature=0.1,
+                system_prompt="你只负责整理评估证据摘要，不评分，不输出JSON，不输出ReAct格式。",
+            ).strip()
+            response = self._strip_react_trace(self._clean_response(response))
+            response = self._normalise_evidence_summary(response)
+            if response and "logic_score" not in response and "Thought:" not in response:
+                return response
         except Exception as e:
-            logger.error(f"评估过程出错: {str(e)}", exc_info=True)
-            raise
+            logger.warning(f"ReAct证据摘要生成失败，使用规则摘要: {str(e)}")
+
+        return self._fallback_evidence_summary(raw_evidence)
+
+    def _fallback_evidence_summary(self, raw_evidence: str) -> str:
+        compact = re.sub(r"\s+", " ", raw_evidence or "").strip()
+        if not compact:
+            return "当前可用证据较少，仅能依据有限对话和文件内容进行保守评估。"
+        return self._normalise_evidence_summary(
+            f"已通过ReAct工具收集当前会话、历史对话、文件摘要和本地向量检索片段作为评估依据。主要证据片段显示：{compact[:420]}"
+        )
+
+    def _normalise_evidence_summary(self, text: str) -> str:
+        """整理证据摘要形态，避免标题/列表和未收尾句子。"""
+        cleaned = re.sub(r"\s+", " ", text or "").strip()
+        cleaned = re.sub(r"^(?:\d+[.、]\s*)?(?:评估)?证据摘要[:：]\s*", "", cleaned)
+        cleaned = re.sub(r"^\s*[-*]\s*", "", cleaned)
+        cleaned = re.sub(r"(?:^|\s)[-*]\s+", "；", cleaned)
+        cleaned = cleaned.strip(" `")
+        if not cleaned:
+            return ""
+        if cleaned[-1] not in "。！？.!?":
+            last_punctuation = max(cleaned.rfind(mark) for mark in "。！？.!?")
+            if last_punctuation >= 80:
+                cleaned = cleaned[:last_punctuation + 1]
+            else:
+                cleaned += "。"
+        return cleaned
+
+    def _evaluate_react(self, chat_history: str, file_context: str) -> Dict[str, Any]:
+        """兼容旧调用：ReAct只收集证据，最终评分仍走直接 JSON 评估。"""
+        react_evidence = self._collect_evidence_with_react(chat_history, file_context)
+        return self._evaluate_simple(
+            chat_history,
+            file_context,
+            tool_context=react_evidence,
+        )
 
     def _clean_response(self, response: str) -> str:
         """清理Agent回复，移除可能的中间步骤标记"""
@@ -349,11 +497,44 @@ Final Answer: 给用户的最终回答
 
         return response.strip()
 
+    def _strip_react_trace(self, text: str) -> str:
+        """移除可能泄漏的 ReAct 过程标签，保留最终证据文本。"""
+        if not text:
+            return ""
+
+        cleaned = text
+        for final_marker in ("Final Answer:", "最终回答："):
+            if final_marker in cleaned:
+                cleaned = cleaned.split(final_marker)[-1]
+
+        cleaned = re.sub(
+            r"(?ims)^\s*(Thought|Action|Action Input|Observation)\s*:.*?(?=^\s*(Thought|Action|Action Input|Observation|Final Answer)\s*:|\Z)",
+            "",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"(?m)^\s*(思考|行动|行动输入|观察)\s*：.*$",
+            "",
+            cleaned,
+        )
+        return cleaned.strip()
+
+    def _extract_used_tool_names(self, intermediate_steps: List[Any]) -> List[str]:
+        """从 LangChain intermediate_steps 中提取已调用工具名。"""
+        used_tools: List[str] = []
+        for step in intermediate_steps:
+            action = step[0] if isinstance(step, (list, tuple)) and step else step
+            tool_name = getattr(action, "tool", None)
+            if tool_name:
+                used_tools.append(str(tool_name))
+        return used_tools
+
     def _extract_json(self, text: str) -> Optional[Dict[str, Any]]:
         """从文本中提取JSON"""
         import re
 
-        cleaned = re.sub(r"```json\s*|\s*```", "", text).strip()
+        cleaned = self._clean_response(text or "")
+        cleaned = re.sub(r"```json\s*|\s*```", "", cleaned).strip()
 
         try:
             return json.loads(cleaned)
@@ -377,7 +558,68 @@ Final Answer: 给用户的最终回答
                     except json.JSONDecodeError:
                         continue
 
+        repaired = self._extract_loose_evaluation_json(cleaned)
+        if repaired is not None:
+            return repaired
+
         return None
+
+    def _extract_loose_evaluation_json(self, text: str) -> Optional[Dict[str, Any]]:
+        """从不严格 JSON 的模型输出中尽力提取评估字段。"""
+        if not text:
+            return None
+
+        result: Dict[str, Any] = {}
+        for key in (
+            "logic_score",
+            "creativity_score",
+            "expression_score",
+            "knowledge_score",
+            "overall_score",
+        ):
+            match = re.search(
+                rf'["\']?{key}["\']?\s*[:：]\s*([0-9]+(?:\.[0-9]+)?)',
+                text,
+            )
+            if match:
+                number = float(match.group(1))
+                result[key] = int(round(number)) if key != "overall_score" else number
+
+        feedback_match = re.search(r'["\']?feedback["\']?\s*[:：]\s*["\']?([\s\S]+)', text)
+        if feedback_match:
+            feedback = feedback_match.group(1)
+            feedback = re.sub(r"```[\s\S]*$", "", feedback)
+            feedback = re.sub(r'["\']?\s*}\s*$', "", feedback.strip())
+            feedback = feedback.replace("\r", " ").replace("\n", " ")
+            result["feedback"] = re.sub(r"\s+", " ", feedback).strip()
+
+        if result:
+            return result
+        return None
+
+    def _normalise_evaluation_result(self, parsed: Dict[str, Any]) -> Dict[str, Any]:
+        """校验并补齐评估结果字段，保证入库字段稳定。"""
+        score_keys = [
+            "logic_score",
+            "creativity_score",
+            "expression_score",
+            "knowledge_score",
+        ]
+
+        overall = parsed.get("overall_score")
+        for key in score_keys:
+            value = parsed.get(key)
+            if value is None and overall is not None:
+                value = overall
+            if value is None:
+                logger.warning(f"评估结果中 {key} 缺失，已设为 0")
+                value = 0
+            parsed[key] = max(0, min(100, int(round(float(value)))))
+
+        parsed["overall_score"] = int(round(sum(parsed[key] for key in score_keys) / len(score_keys)))
+        feedback = parsed.get("feedback") or "暂无反馈。"
+        parsed["feedback"] = re.sub(r"\s+", " ", str(feedback)).strip()
+        return parsed
 
     def add_tool(self, tool: BaseTool):
         """动态添加工具"""

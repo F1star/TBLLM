@@ -68,17 +68,100 @@
             <span>请先选择您的测评类型</span>
           </div>
 
-          <button
-            class="next-btn"
-            :disabled="!selectedCohort"
-            @click="startAssessment"
-            :class="{ 'pulse-animation': !selectedCohort }"
-          >
-            开始测评
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </button>
+          <div class="step1-actions">
+            <button
+              class="next-btn"
+              :disabled="!selectedCohort"
+              @click="startAssessment"
+              :class="{ 'pulse-animation': !selectedCohort }"
+            >
+              开始测评
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </button>
+            <button class="records-toggle-btn" @click="loadAssessmentRecords">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3v18h18"/>
+                <path d="M7 14l3-3 3 2 4-6"/>
+              </svg>
+              {{ showAssessmentRecords ? '刷新记录' : '查看测评记录' }}
+            </button>
+          </div>
+
+          <div v-if="showAssessmentRecords" class="records-panel step1-records">
+            <div class="records-header">
+              <h3>专业测评记录</h3>
+              <span>{{ assessmentSessions.length }} 条</span>
+            </div>
+            <div v-if="recordsLoading" class="records-empty">记录加载中...</div>
+            <div v-else-if="assessmentSessions.length === 0" class="records-empty">暂无专业测评记录</div>
+            <div v-else class="records-list">
+              <div
+                v-for="session in assessmentSessions"
+                :key="session.id"
+                class="record-item"
+                :class="{ expanded: expandedSessionId === session.id }"
+                @click="toggleSessionExpand(session.id)"
+              >
+                <div class="record-expand-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                  </svg>
+                </div>
+                <div class="record-main">
+                  <div class="record-title">{{ session.name }}</div>
+                  <div class="record-meta">
+                    {{ getCohortName(session.cohort) }} · {{ session.answered_count }}/{{ session.question_count }} 已答 · {{ formatRecordTime(session.completed_at || session.created_at) }}
+                  </div>
+                </div>
+                <div class="record-score" v-if="session.evaluation">
+                  {{ Math.round(session.evaluation.overall_score || 0) }}分
+                </div>
+                <div class="record-status" v-else>{{ getSessionStatusLabel(session.status) }}</div>
+                <button class="record-delete-btn" @click.stop="confirmDeleteSession(session)" title="删除记录">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 10v6M14 10v6"/>
+                  </svg>
+                </button>
+                <div v-if="expandedSessionId === session.id" class="record-detail" @click.stop>
+                  <div v-if="session.evaluation" class="detail-scores">
+                    <template v-if="getRecordSkillEntries(session.evaluation).length > 0">
+                      <div class="record-summary-grid">
+                        <div v-for="item in getRecordSkillEntries(session.evaluation)" :key="item.skill" class="skill-item record-skill-item">
+                          <div class="skill-name">{{ item.skill }}</div>
+                          <div class="skill-progress">
+                            <div class="progress-bar">
+                              <div
+                                class="progress-fill"
+                                :style="{ width: clampScore(item.score) + '%' }"
+                                :class="getSkillLevelClass(item.score)"
+                              ></div>
+                            </div>
+                            <div class="skill-score">{{ Math.round(clampScore(item.score)) }}分</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="record-overall-row">
+                        <span>综合得分</span>
+                        <strong>{{ Math.round(clampScore(session.evaluation.overall_score)) }}分</strong>
+                      </div>
+                    </template>
+                    <div v-else class="detail-empty compact">
+                      <p>这条历史记录缺少专业技能明细，无法按测评完成页展示。重新测评后会保存完整技能评分。</p>
+                    </div>
+                  </div>
+                  <div v-if="session.evaluation && session.evaluation.feedback" class="detail-feedback">
+                    <h4>测评反馈</h4>
+                    <p>{{ session.evaluation.feedback }}</p>
+                  </div>
+                  <div v-if="!session.evaluation" class="detail-empty">
+                    <p>该测评尚未完成评估，无法查看详细结果。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -393,6 +476,13 @@
               </svg>
               重新测评
             </button>
+            <button class="action-btn secondary" @click="loadAssessmentRecords">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3v18h18"/>
+                <path d="M7 14l3-3 3 2 4-6"/>
+              </svg>
+              {{ showAssessmentRecords ? '刷新记录' : '查看测评记录' }}
+            </button>
             <button class="action-btn primary" @click="downloadResults">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -401,6 +491,80 @@
               </svg>
               下载报告
             </button>
+          </div>
+
+          <div v-if="showAssessmentRecords" class="records-panel">
+            <div class="records-header">
+              <h3>专业测评记录</h3>
+              <span>{{ assessmentSessions.length }} 条</span>
+            </div>
+            <div v-if="recordsLoading" class="records-empty">记录加载中...</div>
+            <div v-else-if="assessmentSessions.length === 0" class="records-empty">暂无专业测评记录</div>
+            <div v-else class="records-list">
+              <div
+                v-for="session in assessmentSessions"
+                :key="session.id"
+                class="record-item"
+                :class="{ expanded: expandedSessionId === session.id }"
+                @click="toggleSessionExpand(session.id)"
+              >
+                <div class="record-expand-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                  </svg>
+                </div>
+                <div class="record-main">
+                  <div class="record-title">{{ session.name }}</div>
+                  <div class="record-meta">
+                    {{ getCohortName(session.cohort) }} · {{ session.answered_count }}/{{ session.question_count }} 已答 · {{ formatRecordTime(session.completed_at || session.created_at) }}
+                  </div>
+                </div>
+                <div class="record-score" v-if="session.evaluation">
+                  {{ Math.round(session.evaluation.overall_score || 0) }}分
+                </div>
+                <div class="record-status" v-else>{{ getSessionStatusLabel(session.status) }}</div>
+                <button class="record-delete-btn" @click.stop="confirmDeleteSession(session)" title="删除记录">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 10v6M14 10v6"/>
+                  </svg>
+                </button>
+                <div v-if="expandedSessionId === session.id" class="record-detail" @click.stop>
+                  <div v-if="session.evaluation" class="detail-scores">
+                    <template v-if="getRecordSkillEntries(session.evaluation).length > 0">
+                      <div class="record-summary-grid">
+                        <div v-for="item in getRecordSkillEntries(session.evaluation)" :key="item.skill" class="skill-item record-skill-item">
+                          <div class="skill-name">{{ item.skill }}</div>
+                          <div class="skill-progress">
+                            <div class="progress-bar">
+                              <div
+                                class="progress-fill"
+                                :style="{ width: clampScore(item.score) + '%' }"
+                                :class="getSkillLevelClass(item.score)"
+                              ></div>
+                            </div>
+                            <div class="skill-score">{{ Math.round(clampScore(item.score)) }}分</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="record-overall-row">
+                        <span>综合得分</span>
+                        <strong>{{ Math.round(clampScore(session.evaluation.overall_score)) }}分</strong>
+                      </div>
+                    </template>
+                    <div v-else class="detail-empty compact">
+                      <p>这条历史记录缺少专业技能明细，无法按测评完成页展示。重新测评后会保存完整技能评分。</p>
+                    </div>
+                  </div>
+                  <div v-if="session.evaluation && session.evaluation.feedback" class="detail-feedback">
+                    <h4>测评反馈</h4>
+                    <p>{{ session.evaluation.feedback }}</p>
+                  </div>
+                  <div v-if="!session.evaluation" class="detail-empty">
+                    <p>该测评尚未完成评估，无法查看详细结果。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -425,6 +589,25 @@
         <button class="error-retry" @click="retry">重试</button>
       </div>
     </div>
+    <!-- 删除确认对话框 -->
+    <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="cancelDelete">
+      <div class="modal-card">
+        <div class="modal-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+            <path d="M12 8v4M12 16h.01"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">确认删除</h3>
+        <p class="modal-description">确定要删除这条测评记录吗？此操作不可撤销。</p>
+        <div class="modal-actions">
+          <button class="modal-btn cancel" @click="cancelDelete" :disabled="deleting">取消</button>
+          <button class="modal-btn confirm" @click="executeDelete" :disabled="deleting">
+            {{ deleting ? '删除中...' : '确认删除' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -446,6 +629,15 @@ export default {
     const errorMessage = ref('')
     const submitting = ref(false)
     const assessmentResult = ref(null)
+    const assessmentSessions = ref([])
+    const showAssessmentRecords = ref(false)
+    const recordsLoading = ref(false)
+    const expandedSessionId = ref(null)
+
+    // 删除确认状态
+    const showDeleteConfirm = ref(false)
+    const deletingSession = ref(null)
+    const deleting = ref(false)
 
     // 交互状态
     const activeRipple = ref(null)
@@ -466,15 +658,15 @@ export default {
         id: 'younger',
         name: '年轻学生组',
         emoji: '🎓',
-        description: '适合初中及高中学生',
-        tags: ['12-18岁', '学业导向', '基础评估']
+        description: '适合10岁左右的小学高年级学生',
+        tags: ['约10岁', '学习习惯', '基础评估']
       },
       {
         id: 'elderly',
         name: '年长学生组',
         emoji: '👨‍🎓',
-        description: '适合大学生及研究生',
-        tags: ['18-25岁', '职业导向', '深入评估']
+        description: '适合15岁左右的初高中阶段学生',
+        tags: ['约15岁', '社会情感', '深入评估']
       }
     ]
 
@@ -556,7 +748,7 @@ export default {
         const token = localStorage.getItem('token')
         if (!token) return
 
-        const response = await fetch('http://localhost:5000/api/professional-assessment/sessions', {
+        const response = await fetch('http://localhost:5050/api/professional-assessment/sessions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -593,7 +785,7 @@ export default {
         if (!token) return
 
         const response = await fetch(
-          `http://localhost:5000/api/professional-assessment/remembered-answers/${selectedCohort.value}`,
+          `http://localhost:5050/api/professional-assessment/remembered-answers/${selectedCohort.value}`,
           { headers: { 'Authorization': `Bearer ${token}` } }
         )
 
@@ -683,7 +875,7 @@ export default {
         if (!token) return
 
         await fetch(
-          `http://localhost:5000/api/professional-assessment/sessions/${currentSessionId.value}/responses`,
+          `http://localhost:5050/api/professional-assessment/sessions/${currentSessionId.value}/responses`,
           {
             method: 'POST',
             headers: {
@@ -722,7 +914,7 @@ export default {
           return
         }
 
-        const response = await fetch('http://localhost:5000/api/professional-assessment/questions', {
+        const response = await fetch('http://localhost:5050/api/professional-assessment/questions', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -761,84 +953,123 @@ export default {
         if (import.meta.env.DEV) {
           console.log('使用示例数据...')
           questions.value = [
-            // younger组问题
+            // younger组问题：与年长组使用同一套示例题
             {
-              question_id: 'q1',
-              question_text: '您认为自己最擅长的能力是什么？',
+              question_id: 'demo_y10_1',
+              question_text: '你目前的学习目标是什么？请简单说明。',
               question_type: 'text',
               cohort: 'younger',
-              metadata: { unit: '能力领域', format: '文本' }
+              metadata: { format: '简短文字' }
             },
             {
-              question_id: 'q2',
-              question_text: '您通常如何解决复杂问题？',
+              question_id: 'demo_y10_2',
+              question_text: '面对学习压力时，我能主动调整自己的情绪。',
               question_type: 'single_choice',
               cohort: 'younger',
               options: {
-                A: '独立思考',
-                B: '团队讨论',
-                C: '查阅资料',
-                D: '寻求帮助'
+                1: '非常不同意',
+                2: '不同意',
+                3: '同意',
+                4: '非常同意'
               }
             },
             {
-              question_id: 'q3',
-              question_text: '请评估以下技能的重要程度：',
+              question_id: 'demo_y10_3',
+              question_text: '我能根据长期目标安排每天的学习任务。',
+              question_type: 'single_choice',
+              cohort: 'younger',
+              options: {
+                1: '非常不同意',
+                2: '不同意',
+                3: '同意',
+                4: '非常同意'
+              }
+            },
+            {
+              question_id: 'demo_y10_4',
+              question_text: '请评价以下能力与你的符合程度：',
               question_type: 'matrix',
               cohort: 'younger',
               options: {
-                1: '非常重要',
-                2: '重要',
-                3: '一般',
-                4: '不重要'
+                1: '非常不同意',
+                2: '不同意',
+                3: '同意',
+                4: '非常同意'
               },
               metadata: {
                 rows: [
-                  { label_zh: '逻辑思维' },
-                  { label_zh: '沟通能力' },
-                  { label_zh: '创新能力' }
+                  { label_zh: '遇到困难时继续尝试' },
+                  { label_zh: '主动表达自己的观点' },
+                  { label_zh: '理解他人的感受' },
+                  { label_zh: '尝试新的学习方法' }
                 ]
               }
             },
-            // elderly组问题
             {
-              question_id: 'q4',
-              question_text: '您认为哪些技能对职业发展最重要？',
+              question_id: 'demo_y10_5',
+              question_text: '请描述一次你克服学习或生活困难的经历。',
+              question_type: 'text',
+              cohort: 'younger',
+              metadata: { format: '简短文字' }
+            },
+            // elderly组问题（约15岁）
+            {
+              question_id: 'demo_e15_1',
+              question_text: '你目前的学习目标是什么？请简单说明。',
               question_type: 'text',
               cohort: 'elderly',
-              metadata: { unit: '技能领域', format: '文本' }
+              metadata: { format: '简短文字' }
             },
             {
-              question_id: 'q5',
-              question_text: '面对职业挑战时，您通常如何应对？',
+              question_id: 'demo_e15_2',
+              question_text: '面对学习压力时，我能主动调整自己的情绪。',
               question_type: 'single_choice',
               cohort: 'elderly',
               options: {
-                A: '制定详细计划',
-                B: '寻求导师指导',
-                C: '团队协作解决',
-                D: '自我反思调整'
+                1: '非常不同意',
+                2: '不同意',
+                3: '同意',
+                4: '非常同意'
               }
             },
             {
-              question_id: 'q6',
-              question_text: '请评估以下职业能力的重要程度：',
+              question_id: 'demo_e15_3',
+              question_text: '我能根据长期目标安排每天的学习任务。',
+              question_type: 'single_choice',
+              cohort: 'elderly',
+              options: {
+                1: '非常不同意',
+                2: '不同意',
+                3: '同意',
+                4: '非常同意'
+              }
+            },
+            {
+              question_id: 'demo_e15_4',
+              question_text: '请评价以下能力与你的符合程度：',
               question_type: 'matrix',
               cohort: 'elderly',
               options: {
-                1: '至关重要',
-                2: '比较重要',
-                3: '一般重要',
-                4: '不太重要'
+                1: '非常不同意',
+                2: '不同意',
+                3: '同意',
+                4: '非常同意'
               },
               metadata: {
                 rows: [
-                  { label_zh: '领导能力' },
-                  { label_zh: '沟通协调' },
-                  { label_zh: '专业技能' },
-                  { label_zh: '创新思维' }
+                  { label_zh: '遇到困难时继续尝试' },
+                  { label_zh: '主动表达自己的观点' },
+                  { label_zh: '理解他人的感受' },
+                  { label_zh: '尝试新的学习方法' }
                 ]
               }
+            },
+            {
+              question_id: 'demo_e15_5',
+              question_text: '请描述一次你克服学习或生活困难的经历。',
+              question_type: 'text',
+              cohort: 'elderly',
+              metadata: { format: '简短文字' }
             }
           ]
           errorMessage.value = ''
@@ -1104,7 +1335,7 @@ export default {
         console.log('提交数据（对话格式）:', JSON.stringify(dialogueData, null, 2));
 
         // 调用后端API - 发送符合微调LLM评估格式的数据
-        const response = await fetch('http://localhost:5000/api/professional-assessment/submit', {
+        const response = await fetch('http://localhost:5050/api/professional-assessment/submit', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -1165,7 +1396,7 @@ export default {
         if (currentSessionId.value) {
           try {
             await fetch(
-              `http://localhost:5000/api/professional-assessment/sessions/${currentSessionId.value}/complete`,
+              `http://localhost:5050/api/professional-assessment/sessions/${currentSessionId.value}/complete`,
               {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -1203,12 +1434,47 @@ export default {
       return '请输入您的答案'
     }
 
+    const clampScore = (score) => {
+      const value = Number(score)
+      if (!Number.isFinite(value)) return 0
+      return Math.min(100, Math.max(0, value))
+    }
+
     const getSkillLevelClass = (score) => {
-      if (score >= 90) return 'level-excellent'
-      if (score >= 80) return 'level-good'
-      if (score >= 70) return 'level-medium'
-      if (score >= 60) return 'level-fair'
+      const value = clampScore(score)
+      if (value >= 90) return 'level-excellent'
+      if (value >= 80) return 'level-good'
+      if (value >= 70) return 'level-medium'
+      if (value >= 60) return 'level-fair'
       return 'level-poor'
+    }
+
+    const normalizeSkillScores = (skillScores) => {
+      if (!skillScores) return {}
+
+      let parsedScores = skillScores
+      if (typeof skillScores === 'string') {
+        try {
+          parsedScores = JSON.parse(skillScores)
+        } catch (error) {
+          return {}
+        }
+      }
+
+      if (Array.isArray(parsedScores) || typeof parsedScores !== 'object') {
+        return {}
+      }
+
+      return Object.fromEntries(
+        Object.entries(parsedScores)
+          .map(([skill, score]) => [skill, clampScore(score)])
+          .filter(([skill]) => Boolean(skill))
+      )
+    }
+
+    const getRecordSkillEntries = (evaluation) => {
+      const skillScores = normalizeSkillScores(evaluation?.skill_scores)
+      return Object.entries(skillScores).map(([skill, score]) => ({ skill, score }))
     }
 
     const resetAssessment = () => {
@@ -1238,6 +1504,97 @@ export default {
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(downloadUrl)
+    }
+
+    const loadAssessmentRecords = async () => {
+      showAssessmentRecords.value = true
+      recordsLoading.value = true
+      try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+
+        const response = await fetch('http://localhost:5050/api/professional-assessment/sessions', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        const data = await response.json()
+        assessmentSessions.value = data.sessions || []
+      } catch (error) {
+        console.warn('加载专业测评记录失败:', error)
+        errorMessage.value = `加载测评记录失败: ${error.message}`
+      } finally {
+        recordsLoading.value = false
+      }
+    }
+
+    const confirmDeleteSession = (session) => {
+      deletingSession.value = session
+      showDeleteConfirm.value = true
+    }
+
+    const toggleSessionExpand = (sessionId) => {
+      expandedSessionId.value = expandedSessionId.value === sessionId ? null : sessionId
+    }
+
+    const cancelDelete = () => {
+      showDeleteConfirm.value = false
+      deletingSession.value = null
+    }
+
+    const executeDelete = async () => {
+      const session = deletingSession.value
+      if (!session) return
+
+      deleting.value = true
+      try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+
+        const response = await fetch(
+          `http://localhost:5050/api/professional-assessment/sessions/${session.id}`,
+          {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        // 从列表中移除已删除的记录
+        assessmentSessions.value = assessmentSessions.value.filter(s => s.id !== session.id)
+        showDeleteConfirm.value = false
+        deletingSession.value = null
+      } catch (error) {
+        console.error('删除测评记录失败:', error)
+        errorMessage.value = `删除失败: ${error.message}`
+      } finally {
+        deleting.value = false
+      }
+    }
+
+    const formatRecordTime = (timestamp) => {
+      if (!timestamp) return '-'
+      return new Date(timestamp).toLocaleString('zh-CN')
+    }
+
+    const getCohortName = (cohortId) => {
+      const cohort = cohorts.find(item => item.id === cohortId)
+      return cohort ? cohort.name : cohortId
+    }
+
+    const getSessionStatusLabel = (status) => {
+      const labels = {
+        in_progress: '进行中',
+        completed: '已完成',
+        evaluated: '已评估'
+      }
+      return labels[status] || status
     }
 
     const retry = () => {
@@ -1289,6 +1646,13 @@ export default {
       errorMessage,
       submitting,
       assessmentResult,
+      assessmentSessions,
+      showAssessmentRecords,
+      recordsLoading,
+      expandedSessionId,
+      showDeleteConfirm,
+      deletingSession,
+      deleting,
       activeRipple,
       activeMatrixRipple,
       focusedOption,
@@ -1326,9 +1690,19 @@ export default {
       submitAssessment,
       getQuestionTypeLabel,
       getPlaceholder,
+      clampScore,
       getSkillLevelClass,
+      getRecordSkillEntries,
       resetAssessment,
       downloadResults,
+      loadAssessmentRecords,
+      confirmDeleteSession,
+      toggleSessionExpand,
+      cancelDelete,
+      executeDelete,
+      formatRecordTime,
+      getCohortName,
+      getSessionStatusLabel,
       retry,
       showDebugInfo,
       getMatrixAnsweredCount
@@ -2807,6 +3181,421 @@ export default {
 .action-btn.primary:focus {
   outline: 2px solid #2980b9;
   outline-offset: 2px;
+}
+
+.records-panel {
+  margin-top: 28px;
+  padding: 22px;
+  background: #f8fafc;
+  border: 1px solid #e8f4fc;
+  border-radius: 14px;
+}
+
+.records-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  color: #2c3e50;
+}
+
+.records-header h3 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.records-header span {
+  color: #7f8c8d;
+  font-size: 0.9rem;
+}
+
+.records-empty {
+  padding: 18px;
+  text-align: center;
+  color: #7f8c8d;
+}
+
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.record-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e8f4fc;
+  border-radius: 12px;
+}
+
+.record-title {
+  color: #2c3e50;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.record-meta {
+  color: #7f8c8d;
+  font-size: 0.9rem;
+}
+
+.record-score {
+  min-width: 64px;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #e8f4fc;
+  color: #2980b9;
+  font-weight: 700;
+}
+
+.record-status {
+  min-width: 64px;
+  text-align: center;
+  color: #7f8c8d;
+  font-size: 0.9rem;
+}
+
+/* 删除按钮 */
+.record-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #95a5a6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  outline: none;
+}
+
+.record-delete-btn:hover {
+  color: #e74c3c;
+  background: rgba(231, 76, 60, 0.08);
+  border-color: rgba(231, 76, 60, 0.2);
+}
+
+/* 可展开的记录项 */
+.record-item {
+  cursor: pointer;
+  position: relative;
+  flex-wrap: wrap;
+}
+
+.record-item:hover {
+  border-color: #c8d6e5;
+  background: #f5f7fa;
+}
+
+.record-expand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: #95a5a6;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.record-item.expanded .record-expand-icon {
+  transform: rotate(180deg);
+  color: #3498db;
+}
+
+/* 展开详情面板 */
+.record-detail {
+  width: 100%;
+  margin-top: 16px;
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e8f4fc;
+  cursor: default;
+}
+
+.detail-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.detail-scores::-webkit-scrollbar {
+  width: 4px;
+}
+
+.detail-scores::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.detail-scores::-webkit-scrollbar-thumb {
+  background: #d0d8e0;
+  border-radius: 2px;
+}
+
+.record-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.record-skill-item {
+  padding: 16px;
+  border-radius: 10px;
+}
+
+.record-overall-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #eef8f3;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.record-overall-row strong {
+  color: #27ae60;
+  font-size: 1.05rem;
+}
+
+.detail-empty.compact {
+  padding: 10px;
+}
+
+.detail-score-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detail-label {
+  width: 80px;
+  font-size: 0.9rem;
+  color: #5d6d7e;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.detail-bar {
+  flex: 1;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.detail-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #3498db, #2980b9);
+  transition: width 0.6s ease-out;
+}
+
+.detail-score-item.overall .detail-fill.overall-fill {
+  background: linear-gradient(90deg, #2ecc71, #27ae60);
+}
+
+.detail-fill.level-excellent { background: linear-gradient(90deg, #2ecc71, #27ae60); }
+.detail-fill.level-good { background: linear-gradient(90deg, #3498db, #2980b9); }
+.detail-fill.level-medium { background: linear-gradient(90deg, #f39c12, #e67e22); }
+.detail-fill.level-fair { background: linear-gradient(90deg, #e74c3c, #c0392b); }
+.detail-fill.level-poor { background: linear-gradient(90deg, #95a5a6, #7f8c8d); }
+
+.detail-val {
+  width: 56px;
+  text-align: right;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.detail-val.overall-val {
+  color: #27ae60;
+  font-size: 1rem;
+}
+
+.detail-feedback {
+  padding-top: 16px;
+  border-top: 1px solid #e8f4fc;
+}
+
+.detail-feedback h4 {
+  font-size: 1rem;
+  color: #2c3e50;
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.detail-feedback p {
+  color: #5d6d7e;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.detail-empty {
+  text-align: center;
+  color: #95a5a6;
+  padding: 12px;
+}
+
+.detail-empty p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* Step1 按钮容器 */
+.step1-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.records-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 32px;
+  border: 2px solid #e8f4fc;
+  border-radius: 12px;
+  background: white;
+  color: #3498db;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+
+.records-toggle-btn:hover {
+  border-color: #3498db;
+  background: #e8f4fc;
+  transform: translateY(-2px);
+}
+
+.step1-records {
+  margin-top: 24px;
+  text-align: left;
+}
+
+/* 删除确认对话框 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(4px);
+  animation: overlayFadeIn 0.2s ease;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-icon {
+  color: #e74c3c;
+  margin-bottom: 16px;
+}
+
+.modal-title {
+  font-size: 1.3rem;
+  color: #2c3e50;
+  margin: 0 0 8px 0;
+  font-weight: 700;
+}
+
+.modal-description {
+  color: #7f8c8d;
+  margin: 0 0 24px 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.modal-btn {
+  padding: 10px 28px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+  outline: none;
+}
+
+.modal-btn.cancel {
+  background: white;
+  color: #5d6d7e;
+  border-color: #e0e0e0;
+}
+
+.modal-btn.cancel:hover {
+  background: #f5f5f5;
+  border-color: #bdc3c7;
+}
+
+.modal-btn.confirm {
+  background: #e74c3c;
+  color: white;
+}
+
+.modal-btn.confirm:hover {
+  background: #c0392b;
+}
+
+.modal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* 记忆功能 - 答案恢复通知横幅 */

@@ -107,7 +107,7 @@ export default {
       fd.append('file', this.selectedFile);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/files/upload', {
+        const res = await fetch('http://localhost:5050/api/files/upload', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` },
           body: fd
@@ -127,7 +127,7 @@ export default {
     async loadUserFiles() {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/files', {
+        const res = await fetch('http://localhost:5050/api/files', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) this.userFiles = await res.json();
@@ -136,7 +136,7 @@ export default {
     async viewFileContent(id) {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`http://localhost:5000/api/files/${id}`, {
+        const res = await fetch(`http://localhost:5050/api/files/${id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) this.fileContent = await res.json();
@@ -146,7 +146,7 @@ export default {
     async downloadFile(id, filename) {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`http://localhost:5000/api/files/${id}/download`, {
+        const res = await fetch(`http://localhost:5050/api/files/${id}/download`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -164,7 +164,7 @@ export default {
       if (!confirm('确定要删除这个文件吗？')) return;
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`http://localhost:5000/api/files/${id}`, {
+        const res = await fetch(`http://localhost:5050/api/files/${id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
